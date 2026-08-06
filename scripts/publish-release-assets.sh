@@ -35,6 +35,20 @@ normalized_notes() {
   jq -Rs 'gsub("\r\n"; "\n") | sub("\n+$"; "")' "$1"
 }
 
+npm_view_optional() {
+  local output_file="$1" error_file="$2"
+  shift 2
+  if npm view "$@" --json > "$output_file" 2> "$error_file"; then
+    return 0
+  fi
+  if grep -Eq '(^|[[:space:]])E404([[:space:]]|$)|404 Not Found' "$error_file"; then
+    printf 'null\n' > "$output_file"
+    return 0
+  fi
+  [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
+  die "npm registry lookup failed for $*"
+}
+
 semver_compare() {
   local left="$1" right="$2" left_core right_core left_pre right_pre
   [[ "$left" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] || die "invalid npm channel version: $left"
@@ -97,7 +111,7 @@ done
 [[ "$prerelease" == "true" || "$prerelease" == "false" ]] || die "--prerelease must be true or false"
 [[ "$latest" == "true" || "$latest" == "false" ]] || die "--latest must be true or false"
 [[ "$prerelease" != "true" || "$latest" == "false" ]] || die "GitHub prereleases cannot be Latest"
-for command_name in git gh npm jq shasum cmp find; do
+for command_name in git gh npm jq shasum cmp find grep sed; do
   command -v "$command_name" >/dev/null 2>&1 || die "missing required command: $command_name"
 done
 
@@ -181,13 +195,17 @@ else
   echo "publish-release-assets: verified existing GitHub Release $tag"
 fi
 
-observed_tag="$(npm view "$package_name" "dist-tags.$npm_tag" --json 2>/dev/null | jq -r 'select(type == "string" and length > 0)' || true)"
+latest_json="$tmp_root/npm-latest.json"
+npm_view_optional "$latest_json" "$tmp_root/npm-latest.error" "$package_name" "dist-tags.$npm_tag"
+observed_tag="$(jq -r 'select(type == "string" and length > 0)' "$latest_json")"
 if [[ -n "$observed_tag" && "$observed_tag" != "$version" ]]; then
   channel_order="$(semver_compare "$version" "$observed_tag")"
   [[ "$channel_order" != "-1" ]] || die "refusing to move npm $npm_tag backward from $observed_tag to $version"
 fi
 
-remote_version="$(npm view "$package_name@$version" version --json 2>/dev/null | jq -r 'select(type == "string")' || true)"
+npm_version_json="$tmp_root/npm-version.json"
+npm_view_optional "$npm_version_json" "$tmp_root/npm-version.error" "$package_name@$version" version
+remote_version="$(jq -r 'select(type == "string")' "$npm_version_json")"
 if [[ -n "$remote_version" ]]; then
   [[ "$remote_version" == "$version" ]] || die "npm returned conflicting version $remote_version"
   remote_shasum="$(npm view "$package_name@$version" dist.shasum --json | jq -er '.')"

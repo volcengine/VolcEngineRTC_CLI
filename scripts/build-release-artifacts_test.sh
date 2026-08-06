@@ -12,8 +12,12 @@ trap 'rm -rf "$tmp"' EXIT
 # A build failure after isolated preparation must not mutate the invoking tree,
 # expose a partial output directory, or leave the owned temporary root behind.
 fake_goreleaser="$tmp/goreleaser"
+remote_capture="$tmp/release-remote"
+identity_capture="$tmp/release-identity"
 cat > "$fake_goreleaser" <<'EOF'
 #!/usr/bin/env bash
+git remote get-url origin > "$REMOTE_CAPTURE"
+printf '%s\n%s\n%s\n%s\n' "${RELEASE_COMMIT:-}" "${RELEASE_BUILD_DATE:-}" "${RELEASE_TIMESTAMP:-}" "$(git show -s --format=%cI HEAD)" > "$IDENTITY_CAPTURE"
 mkdir -p dist
 printf 'partial\n' > dist/partial.txt
 exit 17
@@ -24,9 +28,21 @@ release_tmp="$tmp/release-tmp"
 mkdir -p "$release_tmp"
 output="$tmp/final-dist"
 before_status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)"
-if TMPDIR="$release_tmp" GORELEASER="$fake_goreleaser" \
+if TMPDIR="$release_tmp" GOCACHE="$tmp/go-cache" GORELEASER="$fake_goreleaser" REMOTE_CAPTURE="$remote_capture" IDENTITY_CAPTURE="$identity_capture" \
   "$repo_root/scripts/build-release-artifacts.sh" --stability snapshot --publication none --output "$output" >/dev/null 2>&1; then
   echo "build-release-artifacts-test: expected injected snapshot build failure" >&2
+  exit 1
+fi
+expected_identity="$(git -C "$repo_root" rev-parse HEAD)
+$(git -C "$repo_root" show -s --format=%cI HEAD)
+$(git -C "$repo_root" show -s --format=%ct HEAD)
+$(git -C "$repo_root" show -s --format=%cI HEAD)"
+if [[ "$(cat "$identity_capture" 2>/dev/null || true)" != "$expected_identity" ]]; then
+  echo "build-release-artifacts-test: release build did not receive deterministic source identity" >&2
+  exit 1
+fi
+if [[ "$(cat "$remote_capture" 2>/dev/null || true)" != "https://github.com/volcengine/VolcEngineRTC_CLI.git" ]]; then
+  echo "build-release-artifacts-test: disposable release repository lacks the canonical public remote" >&2
   exit 1
 fi
 after_status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)"
@@ -52,12 +68,29 @@ invalid_prerelease_error="$(
 grep -Fq 'must be valid X.Y.Z-prerelease SemVer' <<< "$invalid_prerelease_error"
 
 workflow="$repo_root/.github/workflows/publish-release.yml"
+if ! grep -Fq 'group: publish-release' "$workflow" || grep -Fq 'group: publish-release-${{ github.ref }}' "$workflow"; then
+  echo "build-release-artifacts-test: release publications are not serialized across tags" >&2
+  exit 1
+fi
+if ! grep -Fq 'queue: max' "$workflow"; then
+  echo "build-release-artifacts-test: pending release publications are not retained" >&2
+  exit 1
+fi
 build_line="$(grep -n 'name: Build and verify all seven release assets' "$workflow" | cut -d: -f1)"
 npm_input_line="$(grep -n 'name: Prepare verified npm package input' "$workflow" | cut -d: -f1)"
 publish_line="$(grep -n 'name: Stage draft, publish npm latest, then finalize GitHub release' "$workflow" | cut -d: -f1)"
 verify_line="$(grep -n 'name: Verify GitHub and npm publication' "$workflow" | cut -d: -f1)"
 [[ "$build_line" -lt "$npm_input_line" && "$npm_input_line" -lt "$publish_line" && "$publish_line" -lt "$verify_line" ]]
 grep -Fq -- '--skip=publish' "$repo_root/scripts/build-release-artifacts.sh"
+if ! grep -Fq -- '-buildvcs=false' "$repo_root/.goreleaser.yaml"; then
+  echo "build-release-artifacts-test: release binaries still embed disposable repository VCS metadata" >&2
+  exit 1
+fi
+if [[ "$(grep -Fc 'mtime: "{{ .Env.RELEASE_BUILD_DATE }}"' "$repo_root/.goreleaser.yaml")" -lt 5 ]]; then
+  echo "build-release-artifacts-test: release archive timestamps are not deterministic" >&2
+  exit 1
+fi
+grep -Fq 'mod_timestamp: "{{ .Env.RELEASE_TIMESTAMP }}"' "$repo_root/.goreleaser.yaml"
 grep -Fq 'delivery="$output_parent/.${output_name}.release-delivery.$$"' "$repo_root/scripts/build-release-artifacts.sh"
 grep -Fq './scripts/publish-release-assets.sh' "$workflow"
 grep -Fq './scripts/verify-release-publication.sh' "$workflow"

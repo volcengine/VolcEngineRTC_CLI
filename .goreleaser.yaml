@@ -12,28 +12,40 @@ builds:
     goarch: [amd64, arm64]
     flags:
       - -trimpath
+      - -buildvcs=false
+    mod_timestamp: "{{ .Env.RELEASE_TIMESTAMP }}"
     ldflags:
       - >-
         -s -w
         -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.Version={{ .Version }}
         -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.ReleaseMarker=VERTC_RELEASE_VERSION={{ .Version }};
-        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.Commit={{ .ShortCommit }}
-        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BuildDate={{ .Date }}
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.Commit={{ .Env.RELEASE_COMMIT }}
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BuildDate={{ .Env.RELEASE_BUILD_DATE }}
         -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BinName=vertc
 
 archives:
   - id: vertc
     ids: [vertc]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      mtime: "{{ .Env.RELEASE_BUILD_DATE }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
     files:
-      - LICENSE
-      - NOTICE
-      - README.md
-      - skills/**/*
+      - src: LICENSE
+        info:
+          mtime: "{{ .Env.RELEASE_BUILD_DATE }}"
+      - src: NOTICE
+        info:
+          mtime: "{{ .Env.RELEASE_BUILD_DATE }}"
+      - src: README.md
+        info:
+          mtime: "{{ .Env.RELEASE_BUILD_DATE }}"
+      - src: skills/**/*
+        info:
+          mtime: "{{ .Env.RELEASE_BUILD_DATE }}"
 
 checksum:
   name_template: checksums.txt

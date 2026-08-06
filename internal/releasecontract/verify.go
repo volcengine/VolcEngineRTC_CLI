@@ -187,11 +187,16 @@ func verifyNativeCLI(binary []byte, manifest Manifest, expectedSkills map[string
 	}
 	var versionEnvelope struct {
 		Data struct {
-			Version string `json:"version"`
+			Version   string `json:"version"`
+			Commit    string `json:"commit"`
+			BuildDate string `json:"build_date"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(versionOutput, &versionEnvelope); err != nil || versionEnvelope.Data.Version != manifest.Version {
 		return fmt.Errorf("native CLI version=%q, want %q", versionEnvelope.Data.Version, manifest.Version)
+	}
+	if manifest.Destination == DestinationPublic && (versionEnvelope.Data.Commit != manifest.SourceCommit || versionEnvelope.Data.BuildDate != manifest.SourceDate) {
+		return fmt.Errorf("native CLI source identity=%q/%q, want %q/%q", versionEnvelope.Data.Commit, versionEnvelope.Data.BuildDate, manifest.SourceCommit, manifest.SourceDate)
 	}
 	listOutput, err := runCLI(path, env, "skills", "list", "--format", "json")
 	if err != nil {

@@ -111,21 +111,29 @@ fi
 echo "build-release-artifacts: preparing isolated $stability/$publication source"
 resolved_version="$(cd "$repo_root" && go "${prepare_args[@]}")"
 [[ -n "$resolved_version" ]] || die "release helper returned an empty version"
+release_commit="$(git -C "$repo_root" rev-parse --verify "$source_ref^{commit}")"
+release_build_date="$(git -C "$repo_root" show -s --format=%cI "$release_commit")"
+release_timestamp="$(git -C "$repo_root" show -s --format=%ct "$release_commit")"
+[[ "$release_commit" =~ ^[0-9a-f]{40}$ && -n "$release_build_date" && "$release_timestamp" =~ ^[0-9]+$ ]] || die "invalid resolved source identity"
 
 # GoReleaser requires Git metadata. Create it only inside the disposable source
 # tree; this is not a linked worktree and never writes invoking-repo Git state.
 git -C "$source_root" init -q
 git -C "$source_root" config user.name "vertc release"
 git -C "$source_root" config user.email "release@localhost"
+git -C "$source_root" remote add origin "https://github.com/volcengine/VolcEngineRTC_CLI.git"
 git -C "$source_root" add .
-git -C "$source_root" commit -qm "Release $resolved_version"
+GIT_AUTHOR_DATE="$release_build_date" GIT_COMMITTER_DATE="$release_build_date" \
+  git -C "$source_root" commit -qm "Release $resolved_version"
 git -C "$source_root" tag "v$resolved_version"
 
 echo "build-release-artifacts: building $resolved_version without publication"
 if [[ "$stability" == "snapshot" ]]; then
-  (cd "$source_root" && RELEASE_VERSION="$resolved_version" "$goreleaser" release --snapshot --clean --config .goreleaser.yaml)
+  (cd "$source_root" && RELEASE_VERSION="$resolved_version" RELEASE_COMMIT="$release_commit" RELEASE_BUILD_DATE="$release_build_date" RELEASE_TIMESTAMP="$release_timestamp" \
+    "$goreleaser" release --snapshot --clean --config .goreleaser.yaml)
 else
-  (cd "$source_root" && RELEASE_VERSION="$resolved_version" "$goreleaser" release --clean --skip=publish --config .goreleaser.yaml)
+  (cd "$source_root" && RELEASE_VERSION="$resolved_version" RELEASE_COMMIT="$release_commit" RELEASE_BUILD_DATE="$release_build_date" RELEASE_TIMESTAMP="$release_timestamp" \
+    "$goreleaser" release --clean --skip=publish --config .goreleaser.yaml)
 fi
 
 echo "build-release-artifacts: verifying $resolved_version"

@@ -112,7 +112,7 @@ case "$1" in
     spec="$2"; field="$3"
     case "$field" in
       version)
-        [[ -f "$TEST_STATE/npm.shasum" ]] || exit 1
+        [[ -f "$TEST_STATE/npm.shasum" ]] || { echo 'npm error code E404' >&2; exit 1; }
         printf '"%s"\n' "$TEST_VERSION"
         ;;
       dist.shasum)
@@ -120,12 +120,14 @@ case "$1" in
         jq -Rn --arg value "$(cat "$TEST_STATE/npm.shasum")" '$value'
         ;;
       dist-tags.latest)
+        [[ "${FAIL_NPM_LATEST_LOOKUP:-0}" == 0 ]] || exit 43
         jq -Rn --arg value "$(cat "$TEST_STATE/npm.latest" 2>/dev/null || true)" '$value'
         ;;
       *) echo "unexpected npm view: $*" >&2; exit 2 ;;
     esac
     ;;
   publish)
+    printf 'attempt\n' >> "$TEST_STATE/npm.attempts"
     [[ "${FAIL_NPM:-0}" == 0 ]] || exit 42
     printf 'publish\n' >> "$TEST_STATE/npm.log"
     shasum -a 1 "$2" | awk '{print $1}' > "$TEST_STATE/npm.shasum"
@@ -160,6 +162,20 @@ if (cd "$fixture" && FAIL_NPM=1 "${publish[@]}") >/dev/null 2>&1; then
 fi
 [[ "$(jq -r '.isDraft' "$state/release.json")" == true ]]
 [[ "$(grep -c '^create$' "$state/gh.log")" -eq 1 ]]
+if [[ "$(grep -c '^attempt$' "$state/npm.attempts")" -ne 1 ]]; then
+  echo "publish-release-assets-test: initial npm failure did not produce exactly one publish attempt" >&2
+  exit 1
+fi
+
+# Registry lookup failures must stop before any npm write is attempted.
+if (cd "$fixture" && FAIL_NPM=1 FAIL_NPM_LATEST_LOOKUP=1 "${publish[@]}") >/dev/null 2>&1; then
+  echo "publish-release-assets-test: npm latest lookup failure was ignored" >&2
+  exit 1
+fi
+if [[ "$(grep -c '^attempt$' "$state/npm.attempts")" -ne 1 ]]; then
+  echo "publish-release-assets-test: npm write was attempted after latest lookup failure" >&2
+  exit 1
+fi
 
 # A retry must reject changed release notes before attempting npm publication.
 jq '.body="unapproved notes"' "$state/release.json" > "$state/release.tmp"

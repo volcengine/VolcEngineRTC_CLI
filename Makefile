@@ -19,6 +19,7 @@ GO_TOOLCHAIN      := go$(GO_VERSION)
 GOLANGCI_VERSION := v1.62.2
 GOLANGCI         = $(shell go env GOPATH)/bin/golangci-lint
 GORELEASER_VERSION := v2.17.0
+GORELEASER_GO_TOOLCHAIN := go1.26.4
 GORELEASER         = $(shell go env GOPATH)/bin/goreleaser
 
 # Repository-specific CI extensions may add prerequisites without changing the
@@ -71,7 +72,7 @@ check-release-files:
 	done
 
 release-tools:
-	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
+	GOTOOLCHAIN=$(GORELEASER_GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 release-snapshot:
 	@test -x "$(GORELEASER)" || { echo "goreleaser not found — run 'make release-tools'"; exit 1; }

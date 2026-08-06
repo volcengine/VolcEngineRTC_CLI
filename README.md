@@ -1,7 +1,7 @@
 # vertc
 
 [![CI](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.23-00ADD8?logo=go)](./go.mod)
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.25.12-00ADD8?logo=go)](./go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 English | [简体中文](./README.zh-CN.md)
@@ -34,7 +34,7 @@ guided, runnable workflow for both developers and coding agents.
 
 - macOS, Linux, or Windows on amd64 or arm64
 - Node.js 16 or later for the recommended npm installation
-- Go 1.23 or later only when installing or building from source
+- Go 1.25.12 or later only when installing or building from source
 - A Volcengine account with an RTC application; a conversational-AI agent is
   optional because `dev` can use the built-in default scene
 - Access to GitHub Releases for npm installation and GitHub codeload for the

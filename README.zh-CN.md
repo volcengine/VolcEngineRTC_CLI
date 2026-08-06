@@ -1,7 +1,7 @@
 # vertc
 
 [![CI](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.23-00ADD8?logo=go)](./go.mod)
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.25.12-00ADD8?logo=go)](./go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 [English](./README.md) | 简体中文
@@ -31,7 +31,7 @@ AI 音视频项目。当前版本将官方 `rtc-aigc-demo` Web 语音智能体�
 
 - macOS、Linux 或 Windows，支持 amd64 和 arm64
 - 推荐通过 npm 安装，需要 Node.js 16 或更高版本
-- 仅从源码安装或构建时需要 Go 1.23 或更高版本
+- 仅从源码安装或构建时需要 Go 1.25.12 或更高版本
 - 火山引擎账号下已有 RTC 应用；对话式 AI 智能体为可选，`dev` 可使用内置默认 Scene
 - npm 安装需要访问 GitHub Releases；首次下载模板需要访问 GitHub codeload，之后可
   复用已校验的本地缓存

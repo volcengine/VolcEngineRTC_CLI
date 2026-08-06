@@ -5,9 +5,21 @@ package skillscheck
 
 import "testing"
 
+func clearAutomationEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CI", "CONTINUOUS_INTEGRATION", "GITHUB_ACTIONS", "GITLAB_CI",
+		"BUILDKITE", "JENKINS_URL", "TF_BUILD", "CIRCLECI", "TRAVIS",
+		"TEAMCITY_VERSION", "CODEBUILD_BUILD_ID",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestDriftAndMarkSynced(t *testing.T) {
 	t.Setenv("VERTC_STATE_DIR", t.TempDir())
 	t.Setenv("VERTC_NO_SKILLS_NOTIFIER", "")
+	clearAutomationEnvironment(t)
 	Init("1.2.0")
 	if Pending() == nil {
 		t.Fatal("expected missing skills notice")

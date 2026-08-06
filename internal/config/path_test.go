@@ -28,6 +28,7 @@ func TestProjectFilePathRejectsEscape(t *testing.T) {
 	dir := "/tmp/proj"
 	for _, name := range []string{
 		"/etc/passwd",            // absolute
+		`C:\Windows\win.ini`,     // Windows drive absolute
 		"../outside.json",        // parent escape
 		"../../etc/passwd",       // deeper escape
 		"sub/../../outside.json", // escape after cleaning

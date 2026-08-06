@@ -18,6 +18,17 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
+func clearAutomationEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CI", "CONTINUOUS_INTEGRATION", "GITHUB_ACTIONS", "GITLAB_CI",
+		"BUILDKITE", "JENKINS_URL", "TF_BUILD", "CIRCLECI", "TRAVIS",
+		"TEAMCITY_VERSION", "CODEBUILD_BUILD_ID",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestIsNewer(t *testing.T) {
 	tests := []struct {
 		current, latest string
@@ -40,7 +51,7 @@ func TestIsNewer(t *testing.T) {
 func TestRefreshAndCheckCached(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VERTC_STATE_DIR", dir)
-	t.Setenv("CI", "")
+	clearAutomationEnvironment(t)
 	t.Setenv("VERTC_NO_UPDATE_NOTIFIER", "")
 	oldURL, oldClient, oldNow := registryURL, httpClient, now
 	registryURL = "https://registry.npmjs.org/test"
@@ -73,7 +84,7 @@ func TestNotifierGates(t *testing.T) {
 
 func TestNeedsRefresh(t *testing.T) {
 	t.Setenv("VERTC_STATE_DIR", t.TempDir())
-	t.Setenv("CI", "")
+	clearAutomationEnvironment(t)
 	t.Setenv("VERTC_NO_UPDATE_NOTIFIER", "")
 	if !NeedsRefresh("1.0.0") {
 		t.Fatal("missing cache should refresh")
@@ -86,7 +97,7 @@ func TestNeedsRefresh(t *testing.T) {
 func TestCachedEvidenceDistinguishesCurrentUnknownAndSkipped(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VERTC_STATE_DIR", dir)
-	t.Setenv("CI", "")
+	clearAutomationEnvironment(t)
 	t.Setenv("VERTC_NO_UPDATE_NOTIFIER", "")
 	oldNow := now
 	now = func() time.Time { return time.Unix(2000, 0) }

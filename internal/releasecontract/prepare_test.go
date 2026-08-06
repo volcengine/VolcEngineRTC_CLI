@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func git(t *testing.T, root string, args ...string) string {
@@ -126,6 +127,8 @@ func TestPrepareDirtyRequiresOptIn(t *testing.T) {
 
 func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 	root := releaseRepo(t)
+	committedBlob := strings.TrimSpace(git(t, root, "rev-parse", "HEAD:README.md"))
+	git(t, root, "config", "core.autocrlf", "true")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("dirty\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +140,9 @@ func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 	if manifest.Source != "commit" || manifest.Version != "1.2.3" {
 		t.Fatalf("manifest=%+v", manifest)
 	}
-	data, _ := os.ReadFile(filepath.Join(destination, "README.md"))
-	if string(data) != "committed\n" {
-		t.Fatalf("commit export used dirty bytes: %q", data)
+	preparedBlob := strings.TrimSpace(git(t, root, "hash-object", "--no-filters", filepath.Join(destination, "README.md")))
+	if preparedBlob != committedBlob {
+		t.Fatalf("commit export blob=%s, want %s", preparedBlob, committedBlob)
 	}
 }
 
@@ -150,9 +153,15 @@ func TestExportCommitReapsProcessAfterFilesystemFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := exportCommit(root, "HEAD", destination)
-	if err == nil {
-		t.Fatal("exportCommit unexpectedly succeeded with a file blocking the skills directory")
+	done := make(chan error, 1)
+	go func() { done <- exportCommit(root, "HEAD", destination) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("exportCommit unexpectedly succeeded with a file blocking the skills directory")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("exportCommit did not reap git archive after a filesystem failure")
 	}
 }
 

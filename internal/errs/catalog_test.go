@@ -4,6 +4,7 @@
 package errs
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -102,6 +103,7 @@ func TestCatalogSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read snapshot (run with UPDATE_SNAPSHOT=1 to create): %v", err)
 	}
+	want = bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))
 	if string(want) != got {
 		t.Fatalf("catalog drifted from snapshot; run `UPDATE_SNAPSHOT=1 go test ./internal/errs/`\n--- want ---\n%s\n--- got ---\n%s", want, got)
 	}

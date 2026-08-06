@@ -461,12 +461,12 @@ func TestAgentStartWithoutAuthReturnsAuthError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dir := t.TempDir()
 	t.Cleanup(func() {
 		if err := os.Chdir(previousWD); err != nil {
 			t.Fatal(err)
 		}
 	})
-	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -876,12 +876,13 @@ func TestOpenAPIInvokeReturnsMalformedConfigError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	dir := t.TempDir()
 	t.Cleanup(func() {
 		if err := os.Chdir(previousWD); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if err := os.Chdir(t.TempDir()); err != nil {
+	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("vertc.config.yaml", []byte("openapi:\n  endpoint: ["), 0o644); err != nil {

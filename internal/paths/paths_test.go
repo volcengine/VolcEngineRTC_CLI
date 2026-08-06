@@ -6,6 +6,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,7 +29,9 @@ func TestWriteFileAtomic(t *testing.T) {
 	if string(got) != `{"ok":true}` {
 		t.Fatalf("got %q", got)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("state file must be private: info=%v err=%v", info, err)
+	if info, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("state file must be private: info=%v", info)
 	}
 }

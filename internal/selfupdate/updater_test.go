@@ -62,6 +62,7 @@ func TestNpmPrefix(t *testing.T) {
 	for input, want := range map[string]string{
 		"/usr/local/lib/node_modules/@volcengine/rtc-cli/scripts/bin/vertc":                       "/usr/local",
 		"/Users/me/.nvm/versions/node/v22/lib/node_modules/@volcengine/rtc-cli/scripts/bin/vertc": "/Users/me/.nvm/versions/node/v22", // public-scan: allow — synthetic test path
+		`C:\Users\me\AppData\Roaming\npm\node_modules\@volcengine\rtc-cli\scripts\bin\vertc.exe`:  `C:\Users\me\AppData\Roaming\npm`,  // public-scan: allow — synthetic test path
 	} {
 		got, err := npmPrefix(input)
 		if err != nil || got != want {

@@ -176,7 +176,7 @@ func verifyNativeCLI(binary []byte, manifest Manifest, expectedSkills map[string
 		return err
 	}
 	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "vertc")
+	path := filepath.Join(dir, nativeBinaryFilename(runtime.GOOS))
 	if err := os.WriteFile(path, binary, 0o700); err != nil {
 		return err
 	}
@@ -230,6 +230,13 @@ func verifyNativeCLI(binary []byte, manifest Manifest, expectedSkills map[string
 		}
 	}
 	return nil
+}
+
+func nativeBinaryFilename(goos string) string {
+	if goos == "windows" {
+		return "vertc.exe"
+	}
+	return "vertc"
 }
 
 func runCLI(path string, env []string, args ...string) ([]byte, error) {

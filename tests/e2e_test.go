@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -34,7 +35,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	binPath = filepath.Join(dir, "vertc")
+	binName := "vertc"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath = filepath.Join(dir, binName)
 	archive, err := remoteVoiceAgentArchive()
 	if err != nil {
 		panic("build remote template fixture: " + err.Error())

@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -131,8 +132,9 @@ func CleanupHealthyBackup() {
 }
 
 func npmPrefix(executablePath string) (string, error) {
-	clean := filepath.Clean(executablePath)
-	parts := strings.Split(filepath.ToSlash(clean), "/")
+	normalized := strings.ReplaceAll(executablePath, `\`, "/")
+	clean := path.Clean(normalized)
+	parts := strings.Split(clean, "/")
 	index := -1
 	for i, part := range parts {
 		if strings.EqualFold(part, "node_modules") {
@@ -148,10 +150,13 @@ func npmPrefix(executablePath string) (string, error) {
 		prefixParts = prefixParts[:len(prefixParts)-1]
 	}
 	prefix := strings.Join(prefixParts, "/")
-	if filepath.IsAbs(clean) && filepath.VolumeName(clean) == "" && !strings.HasPrefix(prefix, "/") {
+	if strings.HasPrefix(clean, "/") && !strings.HasPrefix(prefix, "/") {
 		prefix = "/" + prefix
 	}
-	return filepath.FromSlash(prefix), nil
+	if strings.Contains(executablePath, `\`) {
+		return strings.ReplaceAll(prefix, "/", `\`), nil
+	}
+	return prefix, nil
 }
 
 // VerifyBinary verifies the newly resolved binary reports the expected version.

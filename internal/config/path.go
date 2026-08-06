@@ -4,6 +4,7 @@
 package config
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -21,7 +22,7 @@ func ProjectFilePath(dir, name string) (string, error) {
 		return "", errs.New("vertc.config.invalid_field", errs.TypeValidation,
 			"empty file path").WithParam("agent.config_file")
 	}
-	if filepath.IsAbs(name) {
+	if portableAbsolutePath(name) {
 		return "", errs.New("vertc.config.invalid_field", errs.TypeValidation,
 			"path %q must be project-relative, not absolute", name).
 			WithParam("agent.config_file").
@@ -36,4 +37,12 @@ func ProjectFilePath(dir, name string) (string, error) {
 			WithHint("use a path inside the project, e.g. server/scenes/default.json")
 	}
 	return target, nil
+}
+
+func portableAbsolutePath(name string) bool {
+	if filepath.IsAbs(name) || path.IsAbs(strings.ReplaceAll(name, `\`, "/")) {
+		return true
+	}
+	return len(name) >= 2 && name[1] == ':' &&
+		((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z'))
 }

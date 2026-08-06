@@ -282,6 +282,23 @@ func TestFixtureCoversNativeTarget(t *testing.T) {
 	t.Fatalf("manifest does not cover native target %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
+func TestNativeBinaryFilename(t *testing.T) {
+	for _, test := range []struct {
+		goos string
+		want string
+	}{
+		{goos: "linux", want: "vertc"},
+		{goos: "darwin", want: "vertc"},
+		{goos: "windows", want: "vertc.exe"},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			if got := nativeBinaryFilename(test.goos); got != test.want {
+				t.Fatalf("nativeBinaryFilename(%q)=%q, want %q", test.goos, got, test.want)
+			}
+		})
+	}
+}
+
 func TestPublicCommitPrepareBuildAndVerify(t *testing.T) {
 	repo := releaseRepo(t)
 	// Add the fixture CLI source to the committed public ref.

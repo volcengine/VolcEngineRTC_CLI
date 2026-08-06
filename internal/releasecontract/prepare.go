@@ -306,7 +306,7 @@ func copyWorktree(repoRoot, destination string) error {
 }
 
 func exportCommit(repoRoot, ref, destination string) error {
-	command := exec.Command("git", "-C", repoRoot, "archive", "--format=tar", ref)
+	command := exec.Command("git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "-C", repoRoot, "archive", "--format=tar", ref)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return err
@@ -319,6 +319,7 @@ func exportCommit(repoRoot, ref, destination string) error {
 	waited := false
 	defer func() {
 		if !waited {
+			_ = stdout.Close()
 			_ = command.Process.Kill()
 			_ = command.Wait()
 		}
@@ -373,6 +374,12 @@ func exportCommit(repoRoot, ref, destination string) error {
 		default:
 			return fmt.Errorf("committed release source %q has unsupported archive type %d", header.Name, header.Typeflag)
 		}
+	}
+	// archive/tar stops at the logical end marker, before git archive closes its
+	// stdout. Drain the remaining padding so the child cannot block on a full
+	// Windows pipe while Wait waits for the child to exit.
+	if _, err := io.Copy(io.Discard, stdout); err != nil {
+		return fmt.Errorf("drain committed source archive: %w", err)
 	}
 	waitErr := command.Wait()
 	waited = true

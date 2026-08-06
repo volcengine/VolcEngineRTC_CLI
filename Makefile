@@ -14,6 +14,8 @@ LDFLAGS := -X '$(PKG)/internal/meta.Version=$(VERSION)' \
            -X '$(PKG)/internal/meta.BinName=$(BIN)'
 
 # Pinned development and release toolchain.
+GO_VERSION        := $(shell awk '/^go / { print $$2; exit }' go.mod)
+GO_TOOLCHAIN      := go$(GO_VERSION)
 GOLANGCI_VERSION := v1.62.2
 GOLANGCI         = $(shell go env GOPATH)/bin/golangci-lint
 GORELEASER_VERSION := v2.17.0
@@ -23,7 +25,7 @@ GORELEASER         = $(shell go env GOPATH)/bin/goreleaser
 # portable public build definition.
 -include .make/ci-extra.mk
 
-.PHONY: build test test-node vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files release-tools release-snapshot release-snapshot-test ci ci-go e2e tools install clean
+.PHONY: build test test-node vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files release-tools release-snapshot release-snapshot-test toolchain-test ci ci-go e2e tools install clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BIN) .
@@ -78,8 +80,11 @@ release-snapshot:
 release-snapshot-test:
 	GORELEASER="$(GORELEASER)" ./scripts/release-snapshot_integration_test.sh
 
+toolchain-test:
+	./scripts/toolchain_test.sh
+
 # The Go-only gate used by CI jobs whose image intentionally has no Node.js.
-ci-go: fmt-check vet lint test check-error-codes check-change-contract-test check-change-contract build
+ci-go: toolchain-test fmt-check vet lint test check-error-codes check-change-contract-test check-change-contract build
 
 # The complete configured local gate.
 ci: ci-go $(CI_EXTRA_TARGETS) test-node
@@ -89,7 +94,7 @@ e2e:
 
 # Install pinned dev tools.
 tools:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 install:
 	go install -ldflags "$(LDFLAGS)" .

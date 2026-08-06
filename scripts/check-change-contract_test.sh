@@ -54,7 +54,11 @@ expect_ci_before_sha_catches_all_pushed_commits() {
   git -C "$dir" add README.md
   git -C "$dir" commit -qm docs-change
 
-  if CI_COMMIT_BEFORE_SHA="$base" "$check" >/dev/null 2>&1; then
+  if (
+    unset CHANGE_CONTRACT_BASE CI_MERGE_REQUEST_DIFF_BASE_SHA CHANGE_CONTRACT_CHANGED_FILES
+    cd "$dir"
+    CI_COMMIT_BEFORE_SHA="$base" "$check" >/dev/null 2>&1
+  ); then
     echo 'expected CI_COMMIT_BEFORE_SHA to include the earlier command change' >&2
     exit 1
   fi
@@ -75,7 +79,11 @@ expect_origin_head_catches_all_local_commits() {
   git -C "$dir" add README.md
   git -C "$dir" commit -qm docs-change
 
-  if (cd "$dir" && "$check" >/dev/null 2>&1); then
+  if (
+    unset CHANGE_CONTRACT_BASE CI_MERGE_REQUEST_DIFF_BASE_SHA CI_COMMIT_BEFORE_SHA CHANGE_CONTRACT_CHANGED_FILES
+    cd "$dir"
+    "$check" >/dev/null 2>&1
+  ); then
     echo 'expected origin/HEAD to include the earlier command change' >&2
     exit 1
   fi

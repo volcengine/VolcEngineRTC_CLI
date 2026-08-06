@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     tags-ignore: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -79,7 +79,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Generate and build the public template
         shell: bash
         run: |
@@ -87,6 +87,6 @@ jobs:
           go build -trimpath -o /tmp/vertc .
           root="$(mktemp -d)"
           trap 'rm -rf "$root"' EXIT
-          /tmp/vertc init "$root/voice-agent" --scene voice-agent --platform web --no-provision
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$root/voice-agent"
-          npm run build --prefix "$root/voice-agent"
+          /tmp/vertc init "$root/voice-agent" --scene voice-agent --platform web
+          yarn --cwd "$root/voice-agent/web" install --frozen-lockfile --ignore-scripts
+          yarn --cwd "$root/voice-agent/web" build

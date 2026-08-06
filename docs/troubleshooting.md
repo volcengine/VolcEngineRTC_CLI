@@ -22,7 +22,7 @@ vertc version --format pretty
 ```
 
 If the package install completed but its binary download failed, verify access
-to GitHub Releases. A source build with Go 1.23 or later is an alternative:
+to GitHub Releases. A source build with Go 1.25.12 or later is an alternative:
 
 ```bash
 git clone https://github.com/volcengine/VolcEngineRTC_CLI.git

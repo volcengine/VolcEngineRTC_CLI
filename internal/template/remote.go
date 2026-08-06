@@ -134,8 +134,8 @@ func remoteDownloadURL(source RemoteSource, commit string) (string, error) {
 	return "https://codeload.github.com/" + repository + "/tar.gz/" + commit, nil
 }
 
-// MaterializeRemote atomically installs validated remote files into an absent
-// or empty target directory. On failure it removes its staging directory.
+// MaterializeRemote stages validated remote files before installing them into
+// an absent or empty target directory. On failure it removes staged output.
 func MaterializeRemote(dest string, files []RenderedFile, dryRun bool) error {
 	if strings.TrimSpace(dest) == "" {
 		return contractError("template target is empty")
@@ -177,15 +177,32 @@ func MaterializeRemote(dest string, files []RenderedFile, dryRun bool) error {
 		return err
 	}
 	if existed {
-		if err := os.Remove(dest); err != nil {
-			return errs.Wrap(err, "vertc.template.render_failed", "replace empty target: %s", err)
-		}
+		return installStagedFiles(stage, dest)
 	}
 	if err := os.Rename(stage, dest); err != nil {
 		if existed {
 			_ = os.Mkdir(dest, 0o755)
 		}
 		return errs.Wrap(err, "vertc.template.render_failed", "install template: %s", err)
+	}
+	return nil
+}
+
+func installStagedFiles(stage, dest string) error {
+	entries, err := os.ReadDir(stage)
+	if err != nil {
+		return errs.Wrap(err, "vertc.template.render_failed", "inspect template staging directory: %s", err)
+	}
+	var installed []string
+	for _, entry := range entries {
+		target := filepath.Join(dest, entry.Name())
+		if err := os.Rename(filepath.Join(stage, entry.Name()), target); err != nil {
+			for i := len(installed) - 1; i >= 0; i-- {
+				_ = os.RemoveAll(installed[i])
+			}
+			return errs.Wrap(err, "vertc.template.render_failed", "install template: %s", err)
+		}
+		installed = append(installed, target)
 	}
 	return nil
 }

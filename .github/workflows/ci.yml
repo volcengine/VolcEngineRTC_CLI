@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-gate:
+    name: Full gate (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install pinned tools
+        run: |
+          make tools
+          go install github.com/zricethezav/gitleaks/v8@v8.27.2
+      - name: Run the repository gate
+        run: make ci
+        env:
+          CHANGE_CONTRACT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Scan for secrets
+        run: gitleaks dir --no-banner --no-color --redact .
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+  cross-platform:
+    name: Test and build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run tests
+        run: go test -count=1 ./...
+      - name: Build CLI
+        shell: bash
+        run: |
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          go build -trimpath -o "vertc${ext}" .
+          "./vertc${ext}" version
+          "./vertc${ext}" --help >/dev/null
+
+  template-build:
+    name: Build generated web templates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Generate and build the public template
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -trimpath -o /tmp/vertc .
+          root="$(mktemp -d)"
+          trap 'rm -rf "$root"' EXIT
+          /tmp/vertc init "$root/voice-agent" --scene voice-agent --platform web --no-provision
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$root/voice-agent"
+          npm run build --prefix "$root/voice-agent"

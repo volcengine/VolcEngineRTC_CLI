@@ -1,0 +1,37 @@
+# golangci-lint config for vertc. Pinned to v1.62.x (see CI / Makefile).
+# High-signal, low-noise linters: they catch real bugs and style drift without
+# flooding the diff. `make lint` runs this; CI gates on it.
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck # unchecked errors
+    - govet # suspicious constructs
+    - ineffassign # ineffectual assignments
+    - staticcheck # broad correctness/style analysis
+    - unused # dead code
+    - gofmt # canonical formatting
+    - goimports # import grouping + local prefix
+    - misspell # common spelling mistakes in comments/strings
+    - unconvert # redundant type conversions
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/volcengine/VolcEngineRTC_CLI
+  gofmt:
+    simplify: true
+  misspell:
+    locale: US
+
+issues:
+  # Show all issues (don't cap per-linter/per-file), so CI reflects the truth.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Tests may intentionally ignore some errors for brevity.
+    - path: _test\.go
+      linters:
+        - errcheck

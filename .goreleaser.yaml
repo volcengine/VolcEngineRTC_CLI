@@ -1,0 +1,60 @@
+version: 2
+
+project_name: vertc
+
+builds:
+  - id: vertc
+    main: .
+    binary: vertc
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.Version={{ .Version }}
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.ReleaseMarker=VERTC_RELEASE_VERSION={{ .Version }};
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.Commit={{ .ShortCommit }}
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BuildDate={{ .Date }}
+        -X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BinName=vertc
+
+archives:
+  - id: vertc
+    ids: [vertc]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - skills/**/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  draft: false
+  prerelease: auto
+  make_latest: true
+
+snapshot:
+  # scripts/build-release-artifacts.sh resolves this once before stamping and building.
+  version_template: "{{ .Env.RELEASE_VERSION }}"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'Merge pull request'
+      - 'Merge branch'

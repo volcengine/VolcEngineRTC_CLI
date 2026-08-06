@@ -1,0 +1,241 @@
+# RTC 错误码知识库 —— Web SDK
+#
+# 来源：火山引擎 实时音视频 · Web SDK 错误码
+#   https://www.volcengine.com/docs/6348/104480?lang=zh
+# SDK 版本：Web 4.68    抓取日期：2026-07-06    页面更新：2025-10-17
+#
+# 说明：
+# - 本文件由 `explain-error` 作为离线知识库使用，并通过 go:embed 随 CLI 发布。
+# - Web 主枚举 ErrorCode 的 code 为字符串（如 INVALID_TOKEN）；其余三个枚举为数字码。
+# - meaning 转录自官方文档；fix 优先采用文档建议；doctor_check 是 CLI 提供的关联诊断项。
+# - via 表示该错误通过哪个回调抛出（文档标注）。
+meta:
+  platform: web
+  domain: web-sdk
+  sdk_version: "4.68"
+  source: "https://www.volcengine.com/docs/6348/104480?lang=zh"
+  source_version: "2025-10-17"   # 官方页面更新日期
+  fetched: "2026-07-06"
+  verified_at: "2026-07-06"
+  verified: verified
+  enums: [ErrorCode, AudioMixingError, StreamMixingEventErrorCode, ForwardStreamError]
+
+codes:
+  # ========== ErrorCode（字符串枚举，进房/发布/订阅/采集/消息/字幕等）==========
+  - { code: INVALID_ENGINE, enum: ErrorCode, kind: error,
+      meaning: "调用 destroyEngine 时，传入的参数不是合法的 engine 对象。" }
+  - { code: INVALID_PARAMS, enum: ErrorCode, kind: error,
+      meaning: "通用错误码。调用方法时，传入的参数不合法。",
+      fix: "请根据各方法说明传入正确的参数。" }
+  - { code: INVALID_TOKEN, enum: ErrorCode, kind: error,
+      meaning: "调用 joinRoom 进房时使用了已过期的 Token 或使用的 Token 无效。",
+      fix: "请重新获取 Token 后再次调用 joinRoom 进房。",
+      doctor_check: token.valid }
+  - { code: JOIN_ROOM_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 joinRoom 进房失败，具体错误原因查看 message。",
+      doctor_check: room.reachable }
+  - { code: UPDATE_TOKEN_WITH_INVALID_TOKEN, enum: ErrorCode, kind: error,
+      meaning: "调用 updateToken 时传入的 Token 无效。",
+      fix: "请使用有效的 Token。", doctor_check: token.valid }
+  - { code: UPDATE_TOKEN_BEFORE_JOIN, enum: ErrorCode, kind: error,
+      meaning: "调用 updateToken 时不在房间内。",
+      fix: "请先调用 joinRoom 加入房间。" }
+  - { code: REPEAT_JOIN, enum: ErrorCode, kind: error,
+      meaning: "重复进房。已加入房间后，又再次调用 joinRoom 时触发。" }
+  - { code: REPEAT_PUSH, enum: ErrorCode, kind: error,
+      meaning: "重复发布 WTN 流。已发布 WTN 流后，又再次调用 startPushPublicStream 时触发。" }
+  - { code: REPEAT_PLAY, enum: ErrorCode, kind: error,
+      meaning: "调用 startPlayPublicStream 重复订阅同一条 WTN 流。" }
+  - { code: NO_PUBLISH_PERMISSION, enum: ErrorCode, kind: error,
+      meaning: "无发布权限。将自身设置为对其他用户不可见后，调用 publishStream 或 publishScreen 发布流。",
+      fix: "请先将自身通过 setUserVisibility 切换至可见后再发布流。" }
+  - { code: STREAM_NOT_EXIST, enum: ErrorCode, kind: error,
+      meaning: "目标流不存在。订阅/取消订阅一路不存在的流，或截取远端画面时指定的流不存在。",
+      fix: "请输入正确的 ID，或确认目标流在房间内。" }
+  - { code: NOT_CONNECTED_YET, enum: ErrorCode, kind: error,
+      meaning: "非法操作。SDK 尚未与服务器建连，在此状态下不能进行该操作。",
+      fix: "请确认调用方法时是否已加入房间，或网络状态是否正常。",
+      doctor_check: room.reachable }
+  - { code: KICKED_OUT, enum: ErrorCode, kind: error, via: onError,
+      meaning: "服务端调用 OpenAPI 将当前用户踢出房间。" }
+  - { code: ROOM_DISMISS, enum: ErrorCode, kind: error, via: onError,
+      meaning: "服务端调用 OpenAPI 解散房间，所有用户被移出房间。" }
+  - { code: TOKEN_EXPIRED, enum: ErrorCode, kind: error, via: onError,
+      meaning: "加入房间后，Token 过期。",
+      fix: "请获取新的 Token 后，调用 joinRoom 重新加入房间。",
+      doctor_check: token.valid }
+  - { code: TOKEN_NO_PUBLISH_PERMISSION, enum: ErrorCode, kind: error, via: onTokenPublishPrivilegeDidExpired,
+      meaning: "Token 发布权限过期。",
+      fix: "调用 updateToken 更新 Token 发布权限。", doctor_check: token.valid }
+  - { code: TOKEN_NO_SUBSCRIBE_PERMISSION, enum: ErrorCode, kind: error, via: onTokenSubscribePrivilegeDidExpired,
+      meaning: "Token 订阅权限过期。",
+      fix: "调用 updateToken 更新 Token 订阅权限。", doctor_check: token.valid }
+  - { code: DUPLICATE_LOGIN, enum: ErrorCode, kind: error, via: onError,
+      meaning: "有相同用户 ID 的用户加入本房间，当前用户被踢出房间。" }
+  - { code: INVOKED_BEFORE_CAPTURE, enum: ErrorCode, kind: error,
+      meaning: "调用 takeLocalSnapshot 截取本地画面时指定的视频流不存在。",
+      fix: "请确保指定的流已发布。" }
+  - { code: REPEAT_CAPTURE, enum: ErrorCode, kind: error,
+      meaning: "重复采集。重复调用 startAudioCapture/startVideoCapture/startAudioAndVideoCapture 采集同一条音/视频流时触发。" }
+  - { code: GET_VIDEO_TRACK_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 startVideoCapture 或 startAudioAndVideoCapture 开启视频采集失败。",
+      fix: "请确认是否有可用的采集设备，或是否被其他 App 占用。", doctor_check: device.camera }
+  - { code: GET_AUDIO_TRACK_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 startAudioCapture 或 startAudioAndVideoCapture 开启音频采集失败。",
+      fix: "请确认是否有可用的采集设备，或是否被其他 App 占用。", doctor_check: device.microphone }
+  - { code: GET_SCREEN_TRACK_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 startScreenCapture 开启屏幕采集共享失败。" }
+  - { code: STREAM_TYPE_NOT_MATCH, enum: ErrorCode, kind: error,
+      meaning: "流类型不匹配。设置了自定义视频源后，又调用内部采集相关接口。" }
+  - { code: CANT_FIND_DOM, enum: ErrorCode, kind: error,
+      meaning: "调用 setLocalVideoPlayer/setRemoteVideoPlayer 传入的播放容器不存在。" }
+  - { code: INVALID_DEVICE_ID, enum: ErrorCode, kind: error,
+      meaning: "调用 setAudioPlaybackDevice 设置音频播放设备时，输入的设备 ID 无效。" }
+  - { code: NOT_SUPPORTED, enum: ErrorCode, kind: error,
+      meaning: "浏览器不支持设置音频播放设备或测试音频采集/播放设备。", doctor_check: env.browser }
+  - { code: ICE_SERVER_WRONG, enum: ErrorCode, kind: error,
+      meaning: "调用 joinRoom 时请求分配 ICE 节点时失败。", doctor_check: room.reachable }
+  - { code: LOAD_RESOURCES_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 startAudioMixing 或 preloadAudioMixing 时资源加载失败。",
+      fix: "请传入正确的资源路径。" }
+  - { code: TIME_OUT, enum: ErrorCode, kind: error,
+      meaning: "通用错误码，60s 内没有收到信令回复。", doctor_check: room.reachable }
+  - { code: ADD_TRANSCEIVER_FAILED, enum: ErrorCode, kind: error,
+      meaning: "创建 TRANSCEIVER 失败。" }
+  - { code: PUBLISH_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 publishStream 或 publishScreen 发布流失败，具体原因查看 message。" }
+  - { code: OPERATION_CANCEL, enum: ErrorCode, kind: warning,
+      meaning: "通用错误码。发布/订阅等操作执行到一半时离开房间触发，表示操作中断，无需处理。" }
+  - { code: START_CLOUD_PROXY_AFTER_JOIN, enum: ErrorCode, kind: error,
+      meaning: "调用 startCloudProxy 开启云代理失败，原因为进房后调用。",
+      fix: "你需要在进房前调用该方法。" }
+  - { code: STOP_CLOUD_PROXY_BEFORE_LEAVE, enum: ErrorCode, kind: error,
+      meaning: "调用 stopCloudProxy 关闭云代理失败，原因为离开房间前调用。",
+      fix: "你需要在退房后调用该方法。" }
+  - { code: UNEXPECTED_ERROR, enum: ErrorCode, kind: error,
+      meaning: "通用错误码。具体错误原因查看 message。" }
+  - { code: REPEAT_DEVICE_TEST, enum: ErrorCode, kind: error,
+      meaning: "检测已开启。重复调用 startAudioPlaybackDeviceTest 或 startAudioDeviceRecordTest 时触发。" }
+  - { code: AUDIO_DEVICE_RECORD_FAILED, name: AUDIO_DEVICE_TEST_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 startAudioDeviceRecordTest 开启音频设备测试失败。",
+      fix: "请重试。", doctor_check: device.microphone }
+  - { code: ALREADY_LOGIN, enum: ErrorCode, kind: error,
+      meaning: "调用 login 失败，已有相同 userId 的用户登录了实时信令服务器。",
+      fix: "请勿重复登录或使用不同的 userId 登录。" }
+  - { code: LOGIN_FAILED, enum: ErrorCode, kind: error,
+      meaning: "调用 login 登录实时信令服务器失败，具体原因查看 message。" }
+  - { code: NOT_LOGIN, enum: ErrorCode, kind: error,
+      meaning: "消息功能通用错误码。尚未 login 成功前调用消息相关 API 时触发。",
+      fix: "请先登录。" }
+  - { code: RTM_DUPLICATE_LOGIN, enum: ErrorCode, kind: error, via: onError,
+      meaning: "相同用户 ID 的用户登录，导致本地已登录用户被顶出。" }
+  - { code: RTM_TOKEN_ERROR, enum: ErrorCode, kind: error, via: onError,
+      meaning: "重连实时信令服务器时使用的 Token 异常。",
+      fix: "请使用新的 Token 重新登录。", doctor_check: token.valid }
+  - { code: USER_MESSAGE_TIMEOUT, enum: ErrorCode, kind: error,
+      meaning: "发送点对点/服务器消息超时。" }
+  - { code: USER_MESSAGE_BROKEN, enum: ErrorCode, kind: error,
+      meaning: "发送点对点/服务器消息时，通道断开，发送失败。" }
+  - { code: USER_MESSAGE_NO_RECEIVER, enum: ErrorCode, kind: error,
+      meaning: "发送点对点消息时找不到接收者。",
+      fix: "请检查传入的 userId 是否正确。" }
+  - { code: USER_MESSAGE_SEND_TO_SERVER_ERROR, enum: ErrorCode, kind: error,
+      meaning: "发送消息到业务服务器无应答，可能是 Http 不通。" }
+  - { code: USER_MESSAGE_SERVER_RESPONSE_ERROR, enum: ErrorCode, kind: error,
+      meaning: "发送消息到业务服务器失败，业务服务器 Http 响应状态码不是 200。" }
+  - { code: USER_MESSAGE_NOT_JOIN, enum: ErrorCode, kind: error,
+      meaning: "发送房间内点对点消息失败，原因是尚未进房。",
+      fix: "请加入房间后调用。" }
+  - { code: USER_MESSAGE_NOT_LOGIN, enum: ErrorCode, kind: error,
+      meaning: "发送房间外点对点消息或向业务服务器发送消息时尚未登录实时信令服务器。",
+      fix: "请先调用 login 登录。" }
+  - { code: USER_MESSAGE_SERVER_PARAMS_NOTSET, enum: ErrorCode, kind: error,
+      meaning: "向业务服务器发送消息之前，尚未设置参数。",
+      fix: "请先调用 setServerParam 设置业务服务器参数。" }
+  - { code: USER_MESSAGE_UNKNOWN, enum: ErrorCode, kind: error,
+      meaning: "发送点对点消息时发生未知错误。" }
+  - { code: RECONNECT_FAILED, enum: ErrorCode, kind: error, via: onError,
+      meaning: "SDK 与服务端重连失败，并不再自动重试。",
+      fix: "你需退房后重新进房，或联系技术支持。", doctor_check: room.reachable }
+  - { code: SUBTITLE_ALREADY_ON, enum: ErrorCode, kind: error,
+      meaning: "字幕已开启。已开启后再次调用 startSubtitle 时触发。",
+      fix: "请勿重复开启字幕功能。" }
+  - { code: SUBTITLE_ERR_POSTPROCESS, enum: ErrorCode, kind: error, via: onSubtitleStateChanged,
+      meaning: "云端媒体处理内部出现错误。", fix: "请联系技术支持。" }
+  - { code: SUBTITLE_ERR_CONNECTION_ERROR, enum: ErrorCode, kind: error, via: onSubtitleStateChanged,
+      meaning: "第三方服务连接失败。", fix: "请联系技术支持。" }
+  - { code: SUBTITLE_ERR_PROCESS_ERROR, enum: ErrorCode, kind: error, via: onSubtitleStateChanged,
+      meaning: "云端媒体处理超时未响应。", fix: "请联系技术支持。" }
+  - { code: SUBTITLE_ERR_UNKNOWN, enum: ErrorCode, kind: error, via: onSubtitleStateChanged,
+      meaning: "客户端无法识别云端媒体处理发送的错误码。", fix: "请联系技术支持。" }
+  - { code: UNEXPECTED_INVOKE_FORWARD_STREAM, enum: ErrorCode, kind: error,
+      meaning: "跨房间转发媒体流相关 API 的调用时机不正确。",
+      fix: "请参考各接口说明确认调用的先后顺序。" }
+  - { code: ROOM_FORBIDDEN, enum: ErrorCode, kind: error,
+      meaning: "调用 joinRoom 进房失败，原因是房间被封禁。" }
+  - { code: USER_FORBIDDEN, enum: ErrorCode, kind: error,
+      meaning: "调用 joinRoom 进房失败，原因是本地用户被封禁。" }
+  - { code: ERR_ELECTRON_IS_NULL, enum: ErrorCode, kind: error,
+      meaning: "获取 Electron 实例失败。",
+      fix: "确认当前满足 Electron 开发环境要求。" }
+  - { code: ELECTRON_DESKTOP_CAPTURER_GET_SOURCES_ERROR, enum: ErrorCode, kind: error,
+      meaning: "在 Electron 环境中获取桌面共享源失败。" }
+  - { code: SET_SIMULCAST_FAILED, enum: ErrorCode, kind: error,
+      meaning: "Simulcast 功能设置失败。开始发布后可以更改分辨率，但不能更改路数。",
+      fix: "确认调用时机是否满足 setLocalSimulcastMode 要求。" }
+  - { code: MIXING_OLD_AND_NEW_APIS, enum: ErrorCode, kind: warning,
+      meaning: "混用了 Simulcast 功能的废弃接口和当前接口。",
+      fix: "setRemoteVideoConfig→setRemoteSimulcastStreamType；enableSimulcastMode→setLocalSimulcastMode。" }
+  - { code: WTN_PUSH_FAILED, enum: ErrorCode, kind: error,
+      meaning: "通过 startPushWTN 发布 WTN 流失败。" }
+  - { code: WTN_PLAY_FAILED, enum: ErrorCode, kind: error,
+      meaning: "通过 startPlayWTN 订阅 WTN 流失败。" }
+  - { code: NOT_ALLOWED_IN_RTS_ROOM, enum: ErrorCode, kind: error,
+      meaning: "RoomMode 为 ROOM_MODE_RTS_ONLY（房间内仅可使用 RTS 功能）时，禁止调用房间外 API。" }
+
+  # ========== AudioMixingError（数字，混音，via onAudioMixingStateChanged）==========
+  - { code: 0, name: AUDIO_MIXING_ERROR_OK, enum: AudioMixingError, kind: ok, via: onAudioMixingStateChanged,
+      meaning: "混音正常。" }
+  - { code: 1, name: AUDIO_MIXING_ERROR_PRELOAD_FAILED, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "预加载失败，找不到混音文件或者文件长度超出 20s。" }
+  - { code: 2, name: AUDIO_MIXING_ERROR_START_FAILED, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "混音开启失败，找不到混音文件或者混音文件打开失败。" }
+  - { code: 3, name: AUDIO_MIXING_ERROR_ID_NOT_FOUND, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "混音 ID 异常。" }
+  - { code: 4, name: AUDIO_MIXING_ERROR_SET_POSITION_FAILED, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "设置混音文件的播放位置出错。" }
+  - { code: 5, name: AUDIO_MIXING_ERROR_INVALID_VOLUME, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "音量参数不合法，音量值区间应为 [0, 400]。" }
+  - { code: 6, name: AUDIO_MIXING_ERROR_LOAD_CONFLICT, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "播放的文件与预加载的文件不一致。",
+      fix: "请先使用 unloadAudioMixing 卸载文件。" }
+  - { code: 7, name: AUDIO_MIXING_ERROR_ID_TYPE_NOT_MATCH, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "混音 ID 类型不匹配，当前操作接口不支持该 ID 代表的音频流类型。" }
+  - { code: 8, name: AUDIO_MIXING_ERROR_ID_TYPE_INVALID_PITCH, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "设置混音文件的音调不合法。" }
+  - { code: 9, name: AUDIO_MIXING_ERROR_INVALID_AUDIO_TRACK, enum: AudioMixingError, kind: error, via: onAudioMixingStateChanged,
+      meaning: "设置混音文件的音轨不合法。" }
+
+  # ========== StreamMixingEventErrorCode（数字，转推直播，via onStreamMixingEvent）==========
+  - { code: 0, name: ERR_OK, enum: StreamMixingEventErrorCode, kind: ok, via: onStreamMixingEvent,
+      meaning: "推流成功。" }
+  - { code: 1, name: ERR_PARAM_INVALID, enum: StreamMixingEventErrorCode, kind: error, via: onStreamMixingEvent,
+      meaning: "推流参数错误。" }
+  - { code: 2, name: ERR_FRAME_TIMEOUT, enum: StreamMixingEventErrorCode, kind: error, via: onStreamMixingEvent,
+      meaning: "和 RTC 服务端建立连接失败，会自动重连。" }
+  - { code: 3, name: ERR_POSTPROCESS, enum: StreamMixingEventErrorCode, kind: error, via: onStreamMixingEvent,
+      meaning: "合流服务中间过程存在错误，建议重试。" }
+  - { code: 4, name: ERR_PUSH_CDN, enum: StreamMixingEventErrorCode, kind: error, via: onStreamMixingEvent,
+      meaning: "推流失败，等待服务端重推。" }
+  - { code: 9999, name: ERR_UNKNOWN, enum: StreamMixingEventErrorCode, kind: error, via: onStreamMixingEvent,
+      meaning: "其他异常。" }
+
+  # ========== ForwardStreamError（数字，跨房间转发媒体流，via onForwardStreamError）==========
+  - { code: 0, name: FORWARD_STREAM_ERROR_OK, enum: ForwardStreamError, kind: ok, via: onForwardStreamError,
+      meaning: "成功。" }
+  - { code: 1202, name: FORWARD_STREAM_ERROR_INVALID_TOKEN, enum: ForwardStreamError, kind: error, via: onForwardStreamError,
+      meaning: "目标房间 Token 错误。", doctor_check: token.valid }
+  - { code: 1203, name: FORWARD_STREAM_ERROR_RESPONSE, enum: ForwardStreamError, kind: error, via: onForwardStreamError,
+      meaning: "服务端未知错误。" }
+  - { code: 1204, name: FORWARD_STREAM_ERROR_REMOTE_KICKED, enum: ForwardStreamError, kind: error, via: onForwardStreamError,
+      meaning: "将源房间设置为目标房间时返回该错误。" }

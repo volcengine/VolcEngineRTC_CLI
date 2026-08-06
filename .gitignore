@@ -1,0 +1,19 @@
+# Build output
+/bin/
+
+# Go
+*.test
+*.prof
+*.out
+
+# Node (generated web projects / scaffolds run in-tree)
+node_modules/
+dist/
+
+# Local env / secrets — never commit
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+*.swp

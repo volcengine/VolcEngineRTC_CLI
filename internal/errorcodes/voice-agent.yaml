@@ -1,0 +1,218 @@
+# 对话式 AI 运行时/OpenAPI 错误码知识库 —— voice-agent（explain-error 扩展）
+#
+# 错误链路及来源：
+#   ① 登录凭证与 OpenAPI 请求签名 → 通用排障条目，公开文档未逐项覆盖，
+#      标记为 curated-seed 且不声明 source。
+#   ② RTC OpenAPI 业务调用（StartVoiceChat 等）→ 火山「公共错误码」（公开）。
+#      来源：https://www.volcengine.com/docs/6348/70426
+#   ③ VoiceChat 对话运行态（回调 EventType=1）→ 火山「事件和错误码」（公开）。
+#      来源：https://www.volcengine.com/docs/6348/1928198（页面更新 2026-05-09）
+#
+# 可信状态（verified）：
+#   - verified     ：转录自火山官方公开文档，已核对（②③）。
+#   - curated-seed ：通用排障建议，未逐条从官方公开文档核验（①）。
+# 过期治理见 scripts/error-codes-freshness.md：对照 source_version 与官方页更新日期巡检。
+meta:
+  platform: voice-agent
+  domain: voice-agent
+  verified: verified          # 文件级默认；curated-seed 条目逐条覆盖
+  verified_at: "2026-07-15"
+  enums: [OpenAPI, VoiceChat]
+
+codes:
+  # ========== ① 登录凭证与请求签名（通用排障条目，无逐项公开来源）==========
+  - { code: SignatureDoesNotMatch, enum: OpenAPI, kind: error, verified: curated-seed,
+      meaning: "OpenAPI 请求签名不匹配：访问凭证缺失、过期，或签名计算有误。",
+      fix: "运行 vertc auth login 刷新访问凭证后重试；此条为通用排障建议，具体以官方文档为准。",
+      doctor_check: agent.auth }
+  - { code: InvalidAccessKey, enum: OpenAPI, kind: error, verified: curated-seed,
+      meaning: "OpenAPI 访问凭证无效或已过期。",
+      fix: "运行 vertc auth login 刷新访问凭证；此条为通用排障建议，具体以官方文档为准。",
+      doctor_check: agent.auth }
+
+  # ========== ② RTC OpenAPI 公共错误码（source: 6348/70426，公开，verified）==========
+  # 仅收录与 voice-agent（StartVoiceChat/UpdateVoiceChat/StopVoiceChat）相关的常见码。
+  - { code: InvalidParameter, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "参数错误。请求参数不合法（如 ASR/TTS/LLM 配置错误）。",
+      fix: "根据错误提示调整参数；运行 vertc doctor 检查 agent 配置。",
+      doctor_check: agent.config }
+  - { code: InvalidParameter.TaskAlreadyExists, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "任务已存在：该房间已有运行中的对话任务。",
+      fix: "先 vertc agent stop 再重新 start，或复用现有 TaskId。" }
+  - { code: InvalidParameter.ErrorActiveTaskNotFound, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "指定任务不存在或已经停止。",
+      fix: "确认 TaskId 正确，或先 vertc agent start。" }
+  - { code: InvalidParameter.IllegalRoomID, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "RoomId 不合法：格式错误。",
+      fix: "填写正确的房间 ID。", doctor_check: agent.config }
+  - { code: InvalidParameter.BodyIsEmpty, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "请求内容为空。",
+      fix: "填写请求参数。" }
+  - { code: InvalidParameter.Unmarshal, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "请求解析失败：参数格式不正确。",
+      fix: "填写正确的参数格式。" }
+  - { code: MissingParameter.NoAppId, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "未填写 AppId。",
+      fix: "补齐 rtc.app_id；运行 vertc doctor 检查配置。", doctor_check: agent.config }
+  - { code: MissingParameter.NoRoomId, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "RoomId 缺失。",
+      fix: "填写 RoomId。", doctor_check: agent.config }
+  - { code: MissingParameter.NoUserId, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "UserId 缺失。",
+      fix: "填写 UserId。", doctor_check: agent.config }
+  - { code: MissingParameter.NoToken, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "Token 缺失。",
+      fix: "填写 Token；可用 vertc token 生成。", doctor_check: token.valid }
+  - { code: AccessDenied.ServiceNotEnabled, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "需要的服务未开通（如 ASR/TTS/LLM 依赖服务）。",
+      fix: "在控制台开通所需服务后重试。", doctor_check: agent.config }
+  - { code: AccessDenied.NoPermissionForApp, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "此 AccountId 没有操作该 AppId 的权限。",
+      fix: "更换正确的 AccountId。", doctor_check: agent.auth }
+  - { code: Unauthorized, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "操作的 AppId 与账号 ID 不匹配。",
+      fix: "确认 AppId 和账号 ID 是否正确。", doctor_check: agent.auth }
+  - { code: FlowLimitExceeded.QPSOverLimit, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "QPS 超过限制。",
+      fix: "降低请求频率，勿太频繁发起请求。" }
+  - { code: UnknownAction, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "Action 未知：不是 OpenAPI 定义的 Action。",
+      fix: "检查 Action 是否为 OpenAPI 定义的接口名。" }
+  - { code: UnknownVersion, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "Version 未知。",
+      fix: "将 Version 重置为正确的接口版本（如 2020-12-01）。" }
+  - { code: InternalError.ReachRateLimit, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "触发系统限流。",
+      fix: "降低请求频率，勿太频繁发起请求。" }
+  - { code: InternalError.Parallel, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "并发操作同一个任务。",
+      fix: "勿并发请求同一任务。" }
+  - { code: InternalError.RPC, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "rpc 调用失败，或 AppId 权限/取值错误。",
+      fix: "重新发起请求，并确认 AppId 是否填写正确。", doctor_check: agent.auth }
+  - { code: InternalError.Unknown, enum: OpenAPI, kind: error,
+      source: "https://www.volcengine.com/docs/6348/70426",
+      meaning: "系统故障，未启动成功。",
+      fix: "重试；若持续请联系技术支持。" }
+
+  # ========== ③ VoiceChat 对话运行态（source: 6348/1928198，公开，verified）==========
+  # 回调 EventType=1 时 ErrorInfo.Errorcode。source_version 盯这页更新日期。
+  - { code: 1000001, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "任务初始化失败：系统内部错误，导致任务无法启动。",
+      fix: "稍后重试；若问题持续，请联系技术支持。" }
+  - { code: 1000002, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "未知参数：StartVoiceChat 请求中包含了未定义的参数字段。",
+      fix: "核对请求参数与 StartVoiceChat 文档一致，移除或修正错误参数。", doctor_check: agent.config }
+  - { code: 1003001, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 实例化失败：ASR 服务配置不正确或内部错误。",
+      fix: "检查 ASRConfig 中的 Provider 和 ProviderParams 是否正确填写。", doctor_check: agent.config }
+  - { code: 1003002, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 请求失败：向 ASR 服务发送请求时失败。",
+      fix: "检查网络连接；若问题持续，请联系技术支持。" }
+  - { code: 1003003, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 响应读取失败：从 ASR 服务接收响应时发生网络错误或超时。",
+      fix: "检查网络稳定性。" }
+  - { code: 1003004, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 响应解析失败：ASR 服务返回的数据格式不符合预期。",
+      fix: "若使用自定义 ASR，检查其返回格式是否符合协议。", doctor_check: agent.config }
+  - { code: 1003005, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 重连失败次数过多：与 ASR 服务的连接多次中断且无法恢复。",
+      fix: "检查 ASR 服务的稳定性及网络状况。" }
+  - { code: 1003006, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "ASR 建联失败：无法与 ASR 服务建立连接。",
+      fix: "确认 ASR 服务已开通；检查 ASRConfig.ProviderParams 鉴权信息；检查网络防火墙策略。", doctor_check: agent.config }
+  - { code: 1004001, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "LLM 实例化失败：LLM 服务配置不正确或内部错误。",
+      fix: "检查 LLMConfig 中的 Mode、EndPointId、APIKey 等参数是否正确。", doctor_check: agent.config }
+  - { code: 1004002, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "LLM 请求失败：向 LLM 服务发送请求时失败。",
+      fix: "检查网络连接；若问题持续，请联系技术支持。" }
+  - { code: 1004003, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "LLM 响应读取失败：从 LLM 服务接收响应时发生网络错误或超时。",
+      fix: "检查网络稳定性。" }
+  - { code: 1004004, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "LLM 响应处理失败：LLM 服务返回的数据格式不符合预期。",
+      fix: "若使用第三方 LLM，检查其返回格式是否符合接口标准。", doctor_check: agent.config }
+  - { code: 1004005, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "LLM 建立连接失败：无法与 LLM 服务建立连接。",
+      fix: "确认 LLM 服务已开通；检查 LLMConfig 的 URL、APIKey 等鉴权信息；检查网络防火墙策略。", doctor_check: agent.config }
+  - { code: 1004006, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "Function Calling 请求失败：调用 FunctionCallingConfig.ServerMessageUrl 配置的业务方 URL 失败。",
+      fix: "检查业务方服务是否正常，URL 是否可公网访问。" }
+  - { code: 1004007, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "Function Calling 响应请求失败：业务方服务返回了非 2xx 的 HTTP 状态码。",
+      fix: "检查业务方服务逻辑，确保对回调请求能正确响应。" }
+  - { code: 1004008, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "安抚语处理失败：在 Function Calling 过程中，播放安抚语失败。",
+      fix: "检查 TTS 配置是否正确。", doctor_check: agent.config }
+  - { code: 1004009, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "MCP 获取工具失败：向 MCP Server 请求工具列表失败。",
+      fix: "检查 MCP Server 地址是否正确，服务是否可用。" }
+  - { code: 1004010, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "MCP 调用工具失败：调用 MCP 工具时发生错误。",
+      fix: "检查 MCP Server 内部工具的实现逻辑。" }
+  - { code: 1005001, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "TTS 实例化失败：TTS 服务配置不正确或内部错误。",
+      fix: "检查 TTSConfig 中的 Provider 和 ProviderParams 是否正确填写。", doctor_check: agent.config }
+  - { code: 1005002, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "TTS 请求失败：向 TTS 服务发送请求时失败。",
+      fix: "检查网络连接；若问题持续，请联系技术支持。" }
+  - { code: 1005003, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "TTS 响应读取失败：从 TTS 服务接收响应时发生网络错误或超时。",
+      fix: "检查网络稳定性。" }
+  - { code: 1005004, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "TTS 响应处理失败：TTS 服务返回的数据格式不符合预期。",
+      fix: "若使用自定义 TTS，检查其返回格式是否符合协议。", doctor_check: agent.config }
+  - { code: 1005005, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "TTS 建连失败：无法与 TTS 服务建立连接。",
+      fix: "确认 TTS 服务已开通；检查 TTSConfig.ProviderParams 鉴权信息；检查网络防火墙策略。", doctor_check: agent.config }
+  - { code: 1006001, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "数字人建联失败：无法与数字人服务建立连接。",
+      fix: "检查 AvatarConfig 中的 AvatarAppID、AvatarToken 等参数是否正确。", doctor_check: agent.config }
+  - { code: 1006002, enum: VoiceChat, kind: error, via: "VoiceChat 回调 (EventType=1)",
+      source: "https://www.volcengine.com/docs/6348/1928198", source_version: "2026-05-09",
+      meaning: "数字人服务内部错误：数字人服务侧发生未知错误。",
+      fix: "请联系技术支持。" }

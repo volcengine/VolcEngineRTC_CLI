@@ -140,6 +140,11 @@ func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 	if manifest.Source != "commit" || manifest.Version != "1.2.3" {
 		t.Fatalf("manifest=%+v", manifest)
 	}
+	wantCommit := strings.TrimSpace(git(t, root, "rev-parse", "HEAD"))
+	wantDate := strings.TrimSpace(git(t, root, "show", "-s", "--format=%cI", "HEAD"))
+	if manifest.SourceCommit != wantCommit || manifest.SourceDate != wantDate {
+		t.Fatalf("source identity=%s/%s, want %s/%s", manifest.SourceCommit, manifest.SourceDate, wantCommit, wantDate)
+	}
 	preparedBlob := strings.TrimSpace(git(t, root, "hash-object", "--no-filters", filepath.Join(destination, "README.md")))
 	if preparedBlob != committedBlob {
 		t.Fatalf("commit export blob=%s, want %s", preparedBlob, committedBlob)

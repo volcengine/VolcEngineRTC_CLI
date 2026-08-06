@@ -19,10 +19,14 @@ import (
 )
 
 func fixtureBinary(t *testing.T, root, version string) []byte {
-	return fixtureBinaryWithMarker(t, root, version, version)
+	return fixtureBinaryWithIdentity(t, root, version, version, "fixture", "fixture-date")
 }
 
 func fixtureBinaryWithMarker(t *testing.T, root, version, markerVersion string) []byte {
+	return fixtureBinaryWithIdentity(t, root, version, markerVersion, "fixture", "fixture-date")
+}
+
+func fixtureBinaryWithIdentity(t *testing.T, root, version, markerVersion, commit, buildDate string) []byte {
 	t.Helper()
 	program := `package main
 import (
@@ -34,13 +38,15 @@ import (
 )
 var Version = "dev"
 var ReleaseMarker = "VERTC_RELEASE_VERSION=dev;"
+var Commit = "unknown"
+var BuildDate = "unknown"
 //go:embed skills/*/SKILL.md
 var content embed.FS
 func main() {
   if ReleaseMarker == "" { os.Exit(3) }
   args := os.Args[1:]
   if len(args) > 0 && args[0] == "version" {
-    _ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok":true,"data":map[string]string{"version":Version}}); return
+    _ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok":true,"data":map[string]string{"version":Version,"commit":Commit,"build_date":BuildDate}}); return
   }
   if len(args) > 1 && args[0] == "skills" && args[1] == "list" {
     entries, _ := content.ReadDir("skills"); names := []string{}; for _, e := range entries { names = append(names, e.Name()) }; sort.Strings(names)
@@ -57,7 +63,7 @@ func main() {
 		t.Fatal(err)
 	}
 	binaryPath := filepath.Join(t.TempDir(), "vertc")
-	command := exec.Command("go", "build", "-trimpath", "-ldflags", "-X main.Version="+version+" -X main.ReleaseMarker=VERTC_RELEASE_VERSION="+markerVersion+";", "-o", binaryPath, ".")
+	command := exec.Command("go", "build", "-trimpath", "-ldflags", "-X main.Version="+version+" -X main.ReleaseMarker=VERTC_RELEASE_VERSION="+markerVersion+"; -X main.Commit="+commit+" -X main.BuildDate="+buildDate, "-o", binaryPath, ".")
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build fixture: %v\n%s", err, output)
@@ -126,7 +132,7 @@ func verifiedFixture(t *testing.T) (Manifest, string, string, string) {
 	}
 	manifest := Manifest{
 		Identity: Identity{Stability: StabilityPrerelease, Destination: DestinationPublic, Version: "1.2.3-rc.1", Baseline: "1.2.3"},
-		Source:   "worktree", SourceRoot: root, SourceCommit: "fixture", Skills: skills,
+		Source:   "worktree", SourceRoot: root, SourceCommit: "fixture", SourceDate: "fixture-date", Skills: skills,
 		Targets: releaseTargets("1.2.3-rc.1"), PackageName: "@volcengine/rtc-cli", ChecksumFile: "checksums.txt",
 	}
 	binary := fixtureBinary(t, root, manifest.Version)
@@ -251,6 +257,39 @@ func TestVerifyRejectsCrossTargetReleaseMarkerMismatch(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsNativeSourceIdentityMismatch(t *testing.T) {
+	manifest, artifacts, checksums, _ := verifiedFixture(t)
+	var target Target
+	for _, candidate := range manifest.Targets {
+		if candidate.GOOS == runtime.GOOS && candidate.GOARCH == runtime.GOARCH {
+			target = candidate
+			break
+		}
+	}
+	wrongBinary := fixtureBinaryWithIdentity(t, manifest.SourceRoot, manifest.Version, manifest.Version, "wrong-commit", "wrong-date")
+	expectedSkills := map[string][]byte{}
+	for _, skill := range manifest.Skills {
+		expectedSkills[skill.Name], _ = os.ReadFile(filepath.Join(manifest.SourceRoot, filepath.FromSlash(skill.Path)))
+	}
+	badArchive := archiveFixture(t, target, wrongBinary, expectedSkills)
+	if err := os.WriteFile(filepath.Join(artifacts, target.Archive), badArchive, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(badArchive)
+	checksumData, _ := os.ReadFile(checksums)
+	lines := strings.Split(strings.TrimSpace(string(checksumData)), "\n")
+	for index, line := range lines {
+		if strings.HasSuffix(line, target.Archive) {
+			lines[index] = fmt.Sprintf("%x  %s", sum, target.Archive)
+		}
+	}
+	_ = os.WriteFile(checksums, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	err := Verify(VerifyOptions{Manifest: manifest, ArtifactsDir: artifacts, Checksums: checksums})
+	if err == nil || !strings.Contains(err.Error(), "source identity") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestVerifyBuildInfoRejectsPrefixVersionMarkers(t *testing.T) {
 	root := t.TempDir()
 	skillDir := filepath.Join(root, "skills", "byted-sample-alpha")
@@ -316,7 +355,7 @@ func TestPublicCommitPrepareBuildAndVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary := fixtureBinary(t, prepared, manifest.Version)
+	binary := fixtureBinaryWithIdentity(t, prepared, manifest.Version, manifest.Version, manifest.SourceCommit, manifest.SourceDate)
 	expectedSkills := map[string][]byte{}
 	for _, skill := range manifest.Skills {
 		expectedSkills[skill.Name], _ = os.ReadFile(filepath.Join(prepared, filepath.FromSlash(skill.Path)))

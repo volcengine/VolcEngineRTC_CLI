@@ -73,6 +73,7 @@ type Manifest struct {
 	Source       string   `json:"source"`
 	SourceRoot   string   `json:"source_root"`
 	SourceCommit string   `json:"source_commit,omitempty"`
+	SourceDate   string   `json:"source_date,omitempty"`
 	Skills       []Skill  `json:"skills"`
 	Targets      []Target `json:"targets"`
 	PackageName  string   `json:"package_name"`

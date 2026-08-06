@@ -71,6 +71,14 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 		return Manifest{}, fmt.Errorf("resolve source ref %q: %w", ref, err)
 	}
 	sourceCommit = strings.TrimSpace(sourceCommit)
+	sourceDate, err := gitOutput(repoRoot, "show", "-s", "--format=%cI", sourceCommit)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("resolve source commit date %q: %w", sourceCommit, err)
+	}
+	sourceDate = strings.TrimSpace(sourceDate)
+	if sourceDate == "" {
+		return Manifest{}, errors.New("source commit date is empty")
+	}
 
 	var preflightSkills []Skill
 	var baseline string
@@ -151,6 +159,7 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 		Source:       string(options.Source),
 		SourceRoot:   destination,
 		SourceCommit: sourceCommit,
+		SourceDate:   sourceDate,
 		Skills:       preparedSkills,
 		Targets:      targets,
 		PackageName:  "@volcengine/rtc-cli",

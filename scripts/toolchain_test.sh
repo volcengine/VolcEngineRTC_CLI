@@ -31,4 +31,12 @@ actual="$(cat "$capture")"
   exit 1
 }
 
+PATH="$tmp/bin:$PATH" TOOLCHAIN_CAPTURE="$capture" make -s -C "$repo_root" release-tools
+actual="$(cat "$capture")"
+expected="go1.26.4"
+[[ "$actual" == "$expected" ]] || {
+  echo "release-tools used GOTOOLCHAIN=${actual:-<unset>}; expected $expected" >&2
+  exit 1
+}
+
 echo "toolchain tests: passed"

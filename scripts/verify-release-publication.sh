@@ -89,14 +89,14 @@ while IFS= read -r archive; do archives+=("$archive"); done < <(find "$assets_di
 for archive in "${archives[@]}"; do
   case "$archive" in
     *.tar.gz)
-      skill_paths="$(tar -tzf "$archive" | grep '/skills/[^/]*/SKILL.md$' || true)"
+      skill_paths="$(tar -tzf "$archive" | grep -E '^skills/[^/]+/SKILL\.md$' || true)"
       [[ -n "$skill_paths" ]] || die "archive lacks embedded Skills: $(basename "$archive")"
       while IFS= read -r skill_path; do
         tar -xOzf "$archive" "$skill_path" | grep -Fq "version: \"$version\"" || die "Skill version mismatch in $(basename "$archive")"
       done <<< "$skill_paths"
       ;;
     *.zip)
-      skill_paths="$(unzip -Z1 "$archive" | grep '/skills/[^/]*/SKILL.md$' || true)"
+      skill_paths="$(unzip -Z1 "$archive" | grep -E '^skills/[^/]+/SKILL\.md$' || true)"
       [[ -n "$skill_paths" ]] || die "archive lacks embedded Skills: $(basename "$archive")"
       while IFS= read -r skill_path; do
         unzip -p "$archive" "$skill_path" | grep -Fq "version: \"$version\"" || die "Skill version mismatch in $(basename "$archive")"

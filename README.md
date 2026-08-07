@@ -1,242 +1,114 @@
 # vertc
 
 [![CI](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/volcengine/VolcEngineRTC_CLI?label=release)](https://github.com/volcengine/VolcEngineRTC_CLI/releases)
+[![npm](https://img.shields.io/npm/v/@volcengine/rtc-cli?label=npm)](https://www.npmjs.com/package/@volcengine/rtc-cli)
 [![Go Version](https://img.shields.io/badge/Go-%3E%3D1.25.12-00ADD8?logo=go)](./go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-English | [简体中文](./README.zh-CN.md)
+[English](./README.en.md) | 简体中文
 
-`vertc` is the Volcengine RTC developer-workflow CLI for creating,
-configuring, diagnosing, and running AI audio/video projects. The current
-release turns the official `rtc-aigc-demo` web voice-agent template into a
-guided, runnable workflow for both developers and coding agents.
+`vertc` 是火山引擎 RTC 的开发工作流 CLI，供开发者和 Coding Agent 创建、配置、运行和排查 AI 音视频项目。
 
-> **Current scope:** `voice-agent × web`. More scenes and platforms will be
-> added only after their end-to-end workflows are ready.
+> **当前范围：** `voice-agent × web`。其他场景和平台会在端到端工作流准备好后加入。
 
-[Quick start](#five-minute-quick-start) · [Agent & CI](#agent-and-ci-workflows) ·
-[Commands](#commands) · [Security](#configuration-and-security) ·
-[Documentation](#documentation) · [Contributing](#contributing)
+[安装](#安装) · [快速开始](#快速开始) · [核心能力](#核心能力) · [Agent 与 CI](#agent-与-ci) · [安全](#配置与安全) · [文档](#文档)
 
-## Why vertc?
+## 安装
 
-- **One guided workflow** — scaffold a pinned official template, configure it
-  from the Console, check readiness, and start local development.
-- **Console-aware setup** — Sign in once, then let the first `dev` run discover
-  your RTC applications and conversational-AI agents and configure the project.
-- **Diagnostics first** — `doctor` reports evidence-based PASS/WARN/SKIP/UNKNOWN/FAIL checks;
-  `explain-error` provides an offline SDK and conversational-AI error catalog.
-- **Agent-native output** — JSON is the default, stdout stays machine-readable,
-  errors have stable `error.code` values, and official Skills provide workflow
-  playbooks.
-
-## Requirements
-
-- macOS, Linux, or Windows on amd64 or arm64
-- Node.js 16 or later for the recommended npm installation
-- Go 1.25.12 or later only when installing or building from source
-- A Volcengine account with an RTC application; a conversational-AI agent is
-  optional because `dev` can use the built-in default scene
-- Access to GitHub Releases for npm installation and GitHub codeload for the
-  first template download; later scaffolds can reuse the verified local cache
-
-## Install
-
-Install the prebuilt binary from npm:
+预编译版本支持 macOS、Linux 和 Windows 的 amd64/arm64。使用 Node.js 16 或更高版本安装：
 
 ```bash
 npm install -g @volcengine/rtc-cli
-vertc version --format pretty
+vertc version
 ```
 
-The installer downloads the binary matching the package version and current
-platform, then verifies it against the release `checksums.txt` before making it
-available as `vertc`.
-
-You can also build from source:
+安装器会从 GitHub Releases 下载对应版本和平台的二进制，并使用 `checksums.txt` 校验。从源码构建需要 Go 1.25.12 或更高版本：
 
 ```bash
 git clone https://github.com/volcengine/VolcEngineRTC_CLI.git
 cd VolcEngineRTC_CLI
 make build
-./bin/vertc version --format pretty
+./bin/vertc version
 ```
 
-Manually managed binaries are not overwritten by `vertc update`; the command
-prints the appropriate upgrade guidance instead.
+## 快速开始
 
-## Five-minute quick start
-
-You can start without creating a conversational-AI agent first. When the
-signed-in account has no agent, `dev` uses the built-in default scene and links
-to the Console for later customization.
+开始前，账号下需要有一个 RTC 应用。对话式 AI 智能体不是必需的；如果没有，`dev` 会使用内置默认 Scene。
 
 ```bash
-# 1. Create the project from the verified rtc-aigc-demo template.
-vertc init ./my-agent --scene voice-agent --platform web --format pretty
+# 1. 创建项目
+vertc init ./my-agent --scene voice-agent --platform web
 cd my-agent
 
-# 2. Sign in and store the refreshable Signin token.
-vertc auth login --format pretty
+# 2. 登录火山引擎
+vertc auth login
 
-# 3. On first run, configure an RTC application and optionally select agents;
-#    vertc then writes the local runtime configuration and starts web + server.
-vertc dev --format pretty
+# 3. 配置 RTC 资源并启动 Web 应用和本地服务
+vertc dev
 ```
 
-The first positional argument to `init` is the target directory; here the
-project is scaffolded into `./my-agent`.
+打开终端给出的地址，点击 **Start** 即可进房对话。首次运行时，`vertc` 会查找账号下的 RTC 应用和智能体；有多个候选时再提示选择。配置或运行失败时，可以用 `vertc doctor` 检查问题；该命令不会修改项目。
 
-When authorization is needed, interactive `auth login` asks whether to open a
-browser, use a manual link/code flow, or cancel. In an agent, remote, or
-headless session, obtain user consent and run `vertc auth login --browser=open`
-or use the resumable manual flow; no UI opens implicitly:
+项目结构、运行方式和身份管理见[语音智能体项目](./docs/voice-agent.md)。
 
-```bash
-# Agent turn 1: return data.authorization_url to the user, then exit.
-vertc auth login --browser=manual --start
+## 核心能力
 
-# Agent turn 2: send the code returned by that URL to the saved transaction.
-printf '%s\n' '<authorization-code>' | vertc auth login --resume
-```
+- **创建和运行项目**：`init` 从固定版本的官方模板创建项目，`dev` 配置控制台资源并启动 Web 应用和本地服务。
+- **排查问题**：`doctor` 给出 PASS/WARN/SKIP/UNKNOWN/FAIL 检查结果；`explain-error` 可离线查询 SDK 与对话式 AI 错误码。
+- **用于 Agent 和脚本**：管道和重定向默认输出 JSON，stdout 只写数据，失败时返回稳定的 `error.code`。有副作用的命令支持 `--dry-run`。
+- **分开保存配置和凭据**：项目元数据、运行时密钥、场景数据和登录凭据各自存放。
 
-The second command must use `--resume`: starting `--browser=manual` again creates
-a different OAuth state and invalidates the code from the first URL. A pending
-manual authorization expires after `--timeout` (five minutes by default) and can
-be consumed only once. The first interactive `dev` run automatically uses a
-unique RTC application and prompts when a choice is required. If one or more
-conversational-AI agents exist, the user chooses which to use; if none exist,
-the built-in default scene is used. Run `vertc dev --reconfigure` to select
-again later; existing bot scene files are preserved.
+### 常用命令
 
-When a usable Signin token is already stored, `auth login` reuses it (refreshing
-it when near expiry) without prompting or opening a browser. Use
-`vertc auth login --force` with an explicit browser mode to reauthorize or
-switch accounts.
+| 命令 | 用途 |
+| --- | --- |
+| `init [dir] --scene <scene> --platform <platform>` | 列出或生成受支持的项目模板 |
+| `auth login` / `auth status` / `auth logout` | 管理火山引擎登录状态 |
+| `dev [--reconfigure]` | 配置 RTC 资源并运行项目 |
+| `doctor [cli\|project]` | 检查 CLI 和项目是否就绪，不修改项目 |
+| `explain-error <code>` | 离线查询 SDK 与对话式 AI 错误码 |
+| `skills list/read/sync` | 查看或同步当前 Release 内嵌的官方 Skill |
+| `update [--check\|--force]` | 检查或更新 npm 管理的安装 |
 
-Signin access and refresh tokens default to the protected
-`$VERTC_HOME/auth.json` file (`~/.vertc/auth.json` when `VERTC_HOME` is unset).
-Choose the operating-system credential store explicitly with
-`vertc auth login --store=keyring`; later commands keep using the selected store.
+运行 `vertc <command> --help` 查看前置条件、完整参数和示例。
 
-In an agent or another non-interactive terminal, run `vertc dev`. A
-`vertc.dev.selection_required` error contains public candidates in
-`error.details.apps` or `error.details.bots`; ask the user to choose, then retry
-with `vertc dev --app-id <id>` or `vertc dev --bot-id <id>`.
-The signed-in CLI retrieves AppKey itself; never send AppKey to an agent or put
-it in command arguments.
+## Agent 与 CI
 
-The generated project contains the full `rtc-aigc-demo` web UI and local server.
-After first-run configuration, `vertc dev` starts both processes; each browser
-page session receives isolated room, user, token, task, and target-user
-identities. Run `vertc doctor --format pretty` whenever setup or runtime fails;
-it diagnoses without modifying the project.
-See [Voice-agent projects](./docs/voice-agent.md) for the generated layout,
-runtime modes, manual configuration, and advanced identity management.
-
-## Agent and CI workflows
-
-Register the official workflow Skill using either form:
-
-The published Skill identifier is `byted-interactai-guide`.
+官方工作流 Skill 标识为 `byted-interactai-guide`：
 
 ```bash
-# From the installed CLI (no repository access required)
 vertc skills sync
-
-# Or directly from the public repository
+# 或
 npx skills add volcengine/VolcEngineRTC_CLI -g -y
 ```
 
-Agent and automation runs should keep the default JSON format:
+Agent 和自动化脚本应显式传入 `--format json`，避免输出格式受终端环境影响。stdout 只写数据，进度和警告写入 stderr；命令失败时返回非零退出码和稳定的 `error.code`。无界面授权、非交互资源选择、错误处理和通知设置见[自动化与结构化输出](./docs/automation.md)。
+
+## 配置与安全
+
+- `vertc.config.yaml` 只保存非敏感项目元数据和 `${ENV}` 引用。
+- `.env.local` 保存本地运行值。该文件已被 Git 忽略，并以受限权限写入；不要提交。
+- Signin 凭据默认保存在受保护的 `$VERTC_HOME/auth.json`。也可以主动选择系统 keyring。
+- `RTC_APP_KEY` 不会写入项目配置、`VITE_*` 前端变量、日志、命令参数或结构化输出；不要在聊天中提供 AppKey。
+
+认证模式、凭据存储和自动化安全边界见[自动化与结构化输出](./docs/automation.md)；漏洞报告方式见 [SECURITY.md](./SECURITY.md)。
+
+## 文档
+
+- [语音智能体项目](./docs/voice-agent.md)：生成目录、首次配置、运行模式与身份行为
+- [自动化与结构化输出](./docs/automation.md)：认证、JSON 信封、错误路由、dry-run、通知与 Skills
+- [故障排查](./docs/troubleshooting.md)：安装、登录、模板、凭据和运行时恢复
+- [CHANGELOG.md](./CHANGELOG.md)：版本变更
+- [SUPPORT.md](./SUPPORT.md)：问题咨询与 Bug 报告渠道
+- [CONTRIBUTING.md](./CONTRIBUTING.md)：开发环境与贡献流程
+
+## 开发与贡献
 
 ```bash
-vertc init ./my-agent --scene voice-agent --platform web
-cd my-agent
-vertc auth status
-vertc dev
-vertc doctor
+make build
+make test
+make ci
 ```
 
-- stdout contains one JSON envelope with `ok` plus `data` or `error`.
-- progress, warnings, and recovery hints go to stderr.
-- failures use non-zero exit codes and stable `error.code` values.
-- side-effecting commands accept the global `--dry-run` flag.
-- `VERTC_NO_UPDATE_NOTIFIER=1` and `VERTC_NO_SKILLS_NOTIFIER=1` suppress
-  additive lifecycle notices when required by a controlled environment.
-
-See [Automation and structured output](./docs/automation.md) for headless
-authorization, non-interactive resource selection, JSON envelopes, failure
-routing, and Skill contracts.
-
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| `init [dir] --scene <scene> --platform <platform>` | List or scaffold supported project templates into `[dir]`; supports `--dry-run` |
-| `auth login [--browser=ask\|open\|manual] [--start\|--resume] [--store=file\|keyring]` / `auth status/logout` | Manage Volcengine Signin credentials with explicit UI, resumable Agent login, and storage choices |
-| `doctor [cli\|project]` | Diagnose CLI and project readiness without modifying the project |
-| `dev [--reconfigure] [--app-id <id>] [--bot-id <id>]` | Configure RTC resources and run the template; unambiguous choices are automatic, selection errors return public candidates, and zero agents use the built-in default scene |
-| `explain-error <code>` | Look up Web SDK and conversational-AI errors offline |
-| `skills list/read/sync` | Inspect, install, or refresh the official Skill content embedded in this release |
-| `update [--check\|--force] [--dry-run]` | Check, preview, or update npm-managed installs and synchronize official Skills |
-| `version` | Print build version, commit, and date |
-
-Run `vertc <command> --help` for prerequisites, examples, and advice about when
-to use or avoid each command. Advanced manual/debugging commands remain hidden
-from the main help so the supported onboarding path stays small.
-
-## Configuration and security
-
-`vertc` deliberately separates project metadata, runtime secrets, scene data,
-and Signin credentials:
-
-| Location | Contains | Safety boundary |
-| --- | --- | --- |
-| `vertc.config.yaml` | Non-secret project metadata and CLI-managed RTC/agent identity references | Safe to review; secrets are referenced through `${ENV}` placeholders |
-| `.env.local` | Local runtime values such as `RTC_APP_ID` and `RTC_APP_KEY` | Gitignored and written with restricted permissions; never commit it |
-| `server/scenes/*.json` | VoiceChat ASR/LLM/TTS and agent configuration selected from the Console | Server-side scene configuration; review before sharing |
-| `$VERTC_HOME/auth.json` (default `~/.vertc/auth.json`) | Selected store and, in `file` mode, Signin access/refresh tokens | Directory `0700`, file `0600`; treat it like a password and never commit it |
-| OS credential store (optional `keyring` mode) | Signin access and refresh tokens | Used only after explicit `auth login --store=keyring` selection |
-
-`RTC_APP_KEY` is never written to `vertc.config.yaml`, a `VITE_*` frontend
-variable, logs, or structured output. It may be stored in the gitignored
-`.env.local` file so new shells and the companion server can use it. Exported
-process environment variables take precedence over values in that file. Never
-provide AppKey in chat or command arguments.
-
-For vulnerability reporting, see [SECURITY.md](./SECURITY.md). Do not include
-credentials, tokens, private endpoints, or sensitive Console data in a public
-issue.
-
-## Documentation
-
-- [Voice-agent projects](./docs/voice-agent.md) — generated layout, first-run
-  configuration, runtime modes, and identity behavior
-- [Automation and structured output](./docs/automation.md) — JSON envelopes,
-  error routing, dry runs, notices, and Skills
-- [Troubleshooting](./docs/troubleshooting.md) — installation, authentication,
-  template, credential, and runtime recovery
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup and contribution recipes
-- [AGENTS.md](./AGENTS.md) — architecture and repository engineering contracts
-- [SUPPORT.md](./SUPPORT.md) — where to ask questions or report bugs
-- [CHANGELOG.md](./CHANGELOG.md) — release changes
-
-## Development
-
-```bash
-make build              # build ./bin/vertc with version metadata
-make test               # unit and end-to-end tests
-make check-error-codes  # validate the stable error.code catalog
-make ci                 # run the complete repository gate
-```
-
-## Contributing
-
-Contributions are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) before
-opening a pull request, and use [SUPPORT.md](./SUPPORT.md) to choose the right
-channel for questions, bugs, feature requests, and security reports.
-
-## License
-
-This project is licensed under the [MIT License](./LICENSE).
+提交 Pull Request 前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。本项目采用 [MIT License](./LICENSE)。

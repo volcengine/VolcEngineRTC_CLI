@@ -14,10 +14,11 @@ archived Skills, archive names, checksums, and npm metadata.
 | Tag | GitHub channel | npm channel |
 | --- | --- | --- |
 | `vX.Y.Z` | Latest release | `latest` |
-| `vX.Y.Z-ID` | Pre-release, not Latest | `latest` |
+| `vX.Y.Z-ID` | Pre-release, not Latest | `next` |
 
 For example, `v0.0.1-rc.1` produces a GitHub Pre-release that is not Latest,
-while npm `latest` resolves to `@volcengine/rtc-cli@0.0.1-rc.1`.
+while npm `next` resolves to `@volcengine/rtc-cli@0.0.1-rc.1` and npm
+`latest` remains unchanged.
 
 ## Prerequisites
 

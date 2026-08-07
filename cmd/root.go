@@ -34,12 +34,23 @@ var (
 
 // out builds an output.Writer from the current --format flag.
 func out() *output.Writer {
-	f, err := output.ParseFormat(flagFormat)
+	f := resolveOutputFormat(flagFormat, isTerminal(os.Stdout))
+	return output.New(f)
+}
+
+func resolveOutputFormat(requested string, stdoutTTY bool) output.Format {
+	if requested == "" {
+		if stdoutTTY {
+			return output.FormatPretty
+		}
+		return output.FormatJSON
+	}
+	f, err := output.ParseFormat(requested)
 	if err != nil {
 		// Fall back to JSON; the bad value is reported by the command itself.
 		f = output.FormatJSON
 	}
-	return output.New(f)
+	return f
 }
 
 // NewRootCmd builds the root command with all subcommands registered.
@@ -79,8 +90,8 @@ func NewRootCmd() *cobra.Command {
 	// runnable but is hidden (see TestRootCommandSurface).
 	root.CompletionOptions.HiddenDefaultCmd = true
 
-	root.PersistentFlags().StringVar(&flagFormat, "format", "json",
-		"output format: json|pretty|table")
+	root.PersistentFlags().StringVar(&flagFormat, "format", "",
+		"output format: json|pretty|table (default: pretty in a terminal, json otherwise)")
 	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false,
 		"preview side effects without applying them")
 

@@ -303,7 +303,7 @@ func TestAgentFacingDocsNeverRecommendAppKeyArgument(t *testing.T) {
 	root := moduleRoot(t)
 	for _, rel := range []string{
 		"README.md",
-		"README.zh-CN.md",
+		"README.en.md",
 		"docs/automation.md",
 		"docs/troubleshooting.md",
 		"docs/voice-agent.md",
@@ -321,7 +321,26 @@ func TestAgentFacingDocsNeverRecommendAppKeyArgument(t *testing.T) {
 
 func TestSkillLifecycleNoticePolicy(t *testing.T) {
 	skill := readSkillFile(t, "SKILL.md")
-	for _, marker := range []string{"先完成并验证当前任务", "不要擅自执行", "_notice.update", "vertc update", "_notice.skills", "vertc skills sync", "VERTC_NO_UPDATE_NOTIFIER", "VERTC_NO_SKILLS_NOTIFIER"} {
+	for _, marker := range []string{
+		"每次读取 `vertc --format json`",
+		"成功或失败输出",
+		"不能只检查",
+		"不得静默",
+		"完成并验证当前用户任务后",
+		"必须向用户简短提示对应命令",
+		"两者同时出现就都提示",
+		"不要擅自执行",
+		"_notice.update",
+		"vertc update",
+		"_notice.skills",
+		"vertc skills sync",
+		"冷缓存首次调用可能没有 notice",
+		"不代表已是最新版",
+		"不要为了等待 notice",
+		"继续检查本任务后续每条 `vertc` JSON 输出",
+		"VERTC_NO_UPDATE_NOTIFIER",
+		"VERTC_NO_SKILLS_NOTIFIER",
+	} {
 		if !strings.Contains(skill, marker) {
 			t.Errorf("SKILL.md lifecycle policy missing %q", marker)
 		}

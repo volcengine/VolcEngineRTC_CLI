@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -29,6 +28,11 @@ const (
 	StabilityStable     Stability = "stable"
 	StabilityPrerelease Stability = "prerelease"
 	StabilitySnapshot   Stability = "snapshot"
+
+	// SourceSkillVersion is a valid SemVer placeholder reserved for checked-in
+	// official Skills. Release preparation replaces it in an isolated copy.
+	SourceSkillVersion = "0.0.0-dev"
+	snapshotVersion    = "0.0.0-snapshot"
 )
 
 // Destination identifies where a release may be published.
@@ -49,7 +53,6 @@ type Identity struct {
 	Stability   Stability   `json:"stability"`
 	Destination Destination `json:"destination"`
 	Version     string      `json:"version"`
-	Baseline    string      `json:"baseline"`
 }
 
 // Skill is one official Skill discovered from a direct child of skills/.
@@ -81,14 +84,11 @@ type Manifest struct {
 }
 
 // Resolve derives the canonical release identity from stability, destination,
-// requested version, and the checked-in stable Skill baseline.
-func Resolve(stability Stability, destination Destination, requested, baseline string) (Identity, error) {
-	baseline = strings.TrimSpace(strings.TrimPrefix(baseline, "v"))
-	if !stableVersion.MatchString(baseline) {
-		return Identity{}, fmt.Errorf("Skill baseline %q must be stable X.Y.Z SemVer", baseline)
-	}
+// and the requested version. Checked-in Skill metadata is a source placeholder
+// and is never a release-version authority.
+func Resolve(stability Stability, destination Destination, requested string) (Identity, error) {
 	requested = strings.TrimSpace(strings.TrimPrefix(requested, "v"))
-	identity := Identity{Stability: stability, Destination: destination, Baseline: baseline}
+	identity := Identity{Stability: stability, Destination: destination}
 	switch destination {
 	case DestinationPublic, DestinationNone:
 	default:
@@ -102,9 +102,6 @@ func Resolve(stability Stability, destination Destination, requested, baseline s
 		if !stableVersion.MatchString(requested) {
 			return Identity{}, fmt.Errorf("public stable version %q must be a vX.Y.Z tag or X.Y.Z", requested)
 		}
-		if requested != baseline {
-			return Identity{}, fmt.Errorf("public stable version %q does not match Skill baseline %q", requested, baseline)
-		}
 		identity.Version = requested
 	case StabilityPrerelease:
 		if destination != DestinationPublic && destination != DestinationNone {
@@ -113,8 +110,8 @@ func Resolve(stability Stability, destination Destination, requested, baseline s
 		if !validPrereleaseVersion(requested) {
 			return Identity{}, fmt.Errorf("prerelease version %q must be valid X.Y.Z-prerelease SemVer", requested)
 		}
-		if coreVersion(requested) != baseline {
-			return Identity{}, fmt.Errorf("prerelease version %q is incompatible with Skill baseline %q", requested, baseline)
+		if requested == SourceSkillVersion || requested == snapshotVersion {
+			return Identity{}, fmt.Errorf("prerelease version %q is reserved for non-release use", requested)
 		}
 		identity.Version = requested
 	case StabilitySnapshot:
@@ -122,14 +119,9 @@ func Resolve(stability Stability, destination Destination, requested, baseline s
 			return Identity{}, fmt.Errorf("snapshot stability is incompatible with %q destination", destination)
 		}
 		if requested != "" {
-			return Identity{}, errors.New("snapshot version is derived from the Skill baseline and must not be supplied")
+			return Identity{}, errors.New("snapshot version is fixed by the release contract and must not be supplied")
 		}
-		parts := stableVersion.FindStringSubmatch(baseline)
-		patch, err := strconv.ParseUint(parts[3], 10, 64)
-		if err != nil || patch == ^uint64(0) {
-			return Identity{}, fmt.Errorf("cannot increment snapshot baseline %q", baseline)
-		}
-		identity.Version = fmt.Sprintf("%s.%s.%d-snapshot", parts[1], parts[2], patch+1)
+		identity.Version = snapshotVersion
 	default:
 		return Identity{}, fmt.Errorf("unknown release stability %q", stability)
 	}
@@ -161,44 +153,37 @@ func validPrereleaseVersion(version string) bool {
 	return true
 }
 
-func coreVersion(version string) string {
-	if index := strings.IndexByte(version, '-'); index >= 0 {
-		return version[:index]
-	}
-	return version
-}
-
 // DiscoverSkills validates and returns every official Skill under root/skills.
-// All Skills must share one stable checked-in version.
-func DiscoverSkills(root string) ([]Skill, string, error) {
+// Checked-in Skills use SourceSkillVersion; release preparation stamps only an
+// isolated copy with the requested release version.
+func DiscoverSkills(root string) ([]Skill, error) {
 	skillsDir := filepath.Join(root, "skills")
 	problems, err := skillscan.CheckSkills(skillsDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("validate official Skills: %w", err)
+		return nil, fmt.Errorf("validate official Skills: %w", err)
 	}
 	if len(problems) > 0 {
 		messages := make([]string, 0, len(problems))
 		for _, problem := range problems {
 			messages = append(messages, fmt.Sprintf("%s: %s", problem.SourceFile, problem.Reason))
 		}
-		return nil, "", fmt.Errorf("official Skill validation failed: %s", strings.Join(messages, "; "))
+		return nil, fmt.Errorf("official Skill validation failed: %s", strings.Join(messages, "; "))
 	}
 
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("read official Skills: %w", err)
+		return nil, fmt.Errorf("read official Skills: %w", err)
 	}
 	var skills []Skill
 	seen := map[string]string{}
-	baseline := ""
 	for _, entry := range entries {
 		entryPath := filepath.Join(skillsDir, entry.Name())
 		info, err := os.Lstat(entryPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("inspect Skill %q: %w", entry.Name(), err)
+			return nil, fmt.Errorf("inspect Skill %q: %w", entry.Name(), err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return nil, "", fmt.Errorf("Skill path %q must not be a symlink", entry.Name())
+			return nil, fmt.Errorf("Skill path %q must not be a symlink", entry.Name())
 		}
 		if !entry.IsDir() {
 			continue
@@ -209,35 +194,30 @@ func DiscoverSkills(root string) ([]Skill, string, error) {
 			continue
 		}
 		if err != nil || !mainInfo.Mode().IsRegular() {
-			return nil, "", fmt.Errorf("Skill %q SKILL.md must be a regular file", entry.Name())
+			return nil, fmt.Errorf("Skill %q SKILL.md must be a regular file", entry.Name())
 		}
 		data, err := os.ReadFile(main)
 		if err != nil {
-			return nil, "", fmt.Errorf("read Skill %q: %w", entry.Name(), err)
+			return nil, fmt.Errorf("read Skill %q: %w", entry.Name(), err)
 		}
 		fm, err := parseFrontmatter(data)
 		if err != nil {
-			return nil, "", fmt.Errorf("parse Skill %q frontmatter: %w", entry.Name(), err)
+			return nil, fmt.Errorf("parse Skill %q frontmatter: %w", entry.Name(), err)
 		}
 		if previous, ok := seen[fm.Name]; ok {
-			return nil, "", fmt.Errorf("duplicate Skill name %q in %s and %s", fm.Name, previous, main)
+			return nil, fmt.Errorf("duplicate Skill name %q in %s and %s", fm.Name, previous, main)
 		}
 		seen[fm.Name] = main
-		if !stableVersion.MatchString(fm.Version) {
-			return nil, "", fmt.Errorf("Skill %q checked-in version %q must be stable X.Y.Z SemVer", fm.Name, fm.Version)
-		}
-		if baseline == "" {
-			baseline = fm.Version
-		} else if fm.Version != baseline {
-			return nil, "", fmt.Errorf("Skill %q version %q does not match baseline %q", fm.Name, fm.Version, baseline)
+		if fm.Version != SourceSkillVersion {
+			return nil, fmt.Errorf("Skill %q checked-in version %q must use source placeholder %q", fm.Name, fm.Version, SourceSkillVersion)
 		}
 		skills = append(skills, Skill{Name: fm.Name, Version: fm.Version, Path: filepath.ToSlash(filepath.Join("skills", entry.Name(), "SKILL.md"))})
 	}
 	if len(skills) == 0 {
-		return nil, "", errors.New("no official Skills containing SKILL.md were found")
+		return nil, errors.New("no official Skills containing SKILL.md were found")
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
-	return skills, baseline, nil
+	return skills, nil
 }
 
 type frontmatter struct {

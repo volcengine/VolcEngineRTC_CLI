@@ -119,8 +119,8 @@ func archiveFixture(t *testing.T, target Target, binary []byte, skills map[strin
 
 func verifiedFixture(t *testing.T) (Manifest, string, string, string) {
 	t.Helper()
-	root := validSkills(t, "1.2.3")
-	skills, _, err := DiscoverSkills(root)
+	root := validSkills(t, SourceSkillVersion)
+	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func verifiedFixture(t *testing.T) (Manifest, string, string, string) {
 		skills[index].Version = "1.2.3-rc.1"
 	}
 	manifest := Manifest{
-		Identity: Identity{Stability: StabilityPrerelease, Destination: DestinationPublic, Version: "1.2.3-rc.1", Baseline: "1.2.3"},
+		Identity: Identity{Stability: StabilityPrerelease, Destination: DestinationPublic, Version: "1.2.3-rc.1"},
 		Source:   "worktree", SourceRoot: root, SourceCommit: "fixture", SourceDate: "fixture-date", Skills: skills,
 		Targets: releaseTargets("1.2.3-rc.1"), PackageName: "@volcengine/rtc-cli", ChecksumFile: "checksums.txt",
 	}

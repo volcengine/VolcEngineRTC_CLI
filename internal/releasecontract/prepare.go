@@ -81,7 +81,6 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 	}
 
 	var preflightSkills []Skill
-	var baseline string
 	if options.Source == SourceWorktree {
 		if !options.AllowDirty {
 			status, err := gitOutput(repoRoot, "status", "--porcelain=v1", "--untracked-files=all")
@@ -92,7 +91,7 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 				return Manifest{}, errors.New("refusing dirty release source without explicit allow-dirty")
 			}
 		}
-		preflightSkills, baseline, err = DiscoverSkills(repoRoot)
+		preflightSkills, err = DiscoverSkills(repoRoot)
 		if err != nil {
 			return Manifest{}, err
 		}
@@ -126,18 +125,16 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 		}
 	}
 
-	preparedSkills, preparedBaseline, err := DiscoverSkills(destination)
+	preparedSkills, err := DiscoverSkills(destination)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("validate prepared source: %w", err)
 	}
 	if options.Source == SourceWorktree {
-		if preparedBaseline != baseline || !sameSkillSet(preflightSkills, preparedSkills) {
+		if !sameSkillSet(preflightSkills, preparedSkills) {
 			return Manifest{}, errors.New("prepared Skill set differs from preflight Skill set")
 		}
-	} else {
-		baseline = preparedBaseline
 	}
-	identity, err := Resolve(options.Stability, options.Publication, options.Version, baseline)
+	identity, err := Resolve(options.Stability, options.Publication, options.Version)
 	if err != nil {
 		return Manifest{}, err
 	}

@@ -6,10 +6,22 @@ GitHub Release, and publishes `@volcengine/rtc-cli` to npm.
 
 ## Version identity and channels
 
-Every official `skills/<name>/SKILL.md` shares one checked-in stable `X.Y.Z`
-baseline. Stable tags must match that baseline; prerelease tags use the same
-core version. One canonical version is reused for CLI metadata, embedded and
+Every checked-in official `skills/<name>/SKILL.md` uses the reserved valid
+SemVer placeholder `0.0.0-dev`. Release preparation treats the requested tag as
+the version authority and replaces that placeholder only in an isolated source
+copy. One canonical version is then reused for CLI metadata, embedded and
 archived Skills, archive names, checksums, and npm metadata.
+
+The public-source audit is version-independent. After the reviewed tree reaches
+GitHub `main`, choose the release version and run the committed-source contract
+preflight against that exact commit before requesting publication approval. A
+later version change leaves the unchanged source review valid but invalidates
+prepared release artifacts, release notes, and publication approval.
+
+```bash
+./scripts/preflight-public-release.sh \
+  --stability stable --version X.Y.Z --ref <github-main-commit>
+```
 
 | Tag | GitHub channel | npm channel |
 | --- | --- | --- |
@@ -24,6 +36,10 @@ while npm `next` resolves to `@volcengine/rtc-cli@0.0.1-rc.1` and npm
 
 Before publishing, confirm:
 
+- the requested version passed `preflight-public-release.sh` against the exact
+  GitHub `main` commit;
+- every checked-in official Skill uses `0.0.0-dev`, while every prepared and
+  archived Skill uses the requested release version;
 - the release commit is present on GitHub `main` and all required checks pass;
 - `CHANGELOG.md`, `LICENSE`, `NOTICE`, the READMEs, and every official Skill are
   ready;
@@ -43,16 +59,18 @@ make release-snapshot-test
 
 ## Publish
 
-1. Prepare complete release notes.
-2. Create an annotated SemVer tag on the reviewed GitHub `main` commit. Stable
+1. After public-source review and GitHub synchronization, freeze the version and
+   run the committed-source contract preflight against exact GitHub `main`.
+2. Prepare complete release notes.
+3. Create an annotated SemVer tag on the reviewed GitHub `main` commit. Stable
    tags use `vX.Y.Z`; prerelease tags use a SemVer suffix such as
    `vX.Y.Z-rc.1`.
-3. Push the tag without force. This triggers
+4. Push the tag without force. This triggers
    `.github/workflows/publish-release.yml`.
-4. Wait for the workflow to build and verify the six platform archives plus
+5. Wait for the workflow to build and verify the six platform archives plus
    `checksums.txt`, publish npm, finalize the GitHub Release, and verify the
    resulting channels.
-5. Run `scripts/verify-release-publication.sh` with the tag, target commit, same
+6. Run `scripts/verify-release-publication.sh` with the tag, target commit, same
    release-notes file, expected channel flags, and workflow run ID for an
    independent final check.
 

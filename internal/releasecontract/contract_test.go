@@ -35,34 +35,34 @@ func validSkills(t *testing.T, version string) string {
 
 func TestResolve(t *testing.T) {
 	tests := []struct {
-		name, requested, baseline, want string
-		stability                       Stability
-		destination                     Destination
-		wantErr                         string
+		name, requested, want string
+		stability             Stability
+		destination           Destination
+		wantErr               string
 	}{
-		{name: "public stable tag", stability: StabilityStable, destination: DestinationPublic, requested: "v1.2.3", baseline: "1.2.3", want: "1.2.3"},
-		{name: "public prerelease tag", stability: StabilityPrerelease, destination: DestinationPublic, requested: "v1.2.3-rc.4", baseline: "1.2.3", want: "1.2.3-rc.4"},
-		{name: "non-publishing prerelease", stability: StabilityPrerelease, destination: DestinationNone, requested: "1.2.3-preview.4", baseline: "1.2.3", want: "1.2.3-preview.4"},
-		{name: "non-publishing snapshot", stability: StabilitySnapshot, destination: DestinationNone, baseline: "1.2.3", want: "1.2.4-snapshot"},
-		{name: "bad prerelease", stability: StabilityPrerelease, destination: DestinationPublic, requested: "1.2.3-rc.01", baseline: "1.2.3", wantErr: "valid"},
-		{name: "stable mismatch", stability: StabilityStable, destination: DestinationPublic, requested: "1.2.4", baseline: "1.2.3", wantErr: "does not match"},
-		{name: "prerelease mismatch", stability: StabilityPrerelease, destination: DestinationPublic, requested: "1.2.4-rc.1", baseline: "1.2.3", wantErr: "incompatible"},
-		{name: "snapshot supplied", stability: StabilitySnapshot, destination: DestinationNone, requested: "1.2.4-snapshot", baseline: "1.2.3", wantErr: "must not be supplied"},
-		{name: "stable none conflict", stability: StabilityStable, destination: DestinationNone, requested: "1.2.3", baseline: "1.2.3", wantErr: "incompatible"},
-		{name: "snapshot public conflict", stability: StabilitySnapshot, destination: DestinationPublic, baseline: "1.2.3", wantErr: "incompatible"},
-		{name: "unknown stability", stability: Stability("nightly"), destination: DestinationNone, baseline: "1.2.3", wantErr: "unknown release stability"},
-		{name: "unknown destination", stability: StabilityStable, destination: Destination("partner"), requested: "1.2.3", baseline: "1.2.3", wantErr: "unknown publication destination"},
+		{name: "public stable tag", stability: StabilityStable, destination: DestinationPublic, requested: "v9.8.7", want: "9.8.7"},
+		{name: "public prerelease tag", stability: StabilityPrerelease, destination: DestinationPublic, requested: "v4.5.6-rc.4", want: "4.5.6-rc.4"},
+		{name: "reserved source placeholder", stability: StabilityPrerelease, destination: DestinationPublic, requested: SourceSkillVersion, wantErr: "reserved"},
+		{name: "reserved snapshot identity", stability: StabilityPrerelease, destination: DestinationPublic, requested: snapshotVersion, wantErr: "reserved"},
+		{name: "non-publishing prerelease", stability: StabilityPrerelease, destination: DestinationNone, requested: "2.3.4-preview.4", want: "2.3.4-preview.4"},
+		{name: "non-publishing snapshot", stability: StabilitySnapshot, destination: DestinationNone, want: "0.0.0-snapshot"},
+		{name: "bad prerelease", stability: StabilityPrerelease, destination: DestinationPublic, requested: "1.2.3-rc.01", wantErr: "valid"},
+		{name: "snapshot supplied", stability: StabilitySnapshot, destination: DestinationNone, requested: "1.2.4-snapshot", wantErr: "must not be supplied"},
+		{name: "stable none conflict", stability: StabilityStable, destination: DestinationNone, requested: "1.2.3", wantErr: "incompatible"},
+		{name: "snapshot public conflict", stability: StabilitySnapshot, destination: DestinationPublic, wantErr: "incompatible"},
+		{name: "unknown stability", stability: Stability("nightly"), destination: DestinationNone, wantErr: "unknown release stability"},
+		{name: "unknown destination", stability: StabilityStable, destination: Destination("partner"), requested: "1.2.3", wantErr: "unknown publication destination"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Resolve(tt.stability, tt.destination, tt.requested, tt.baseline)
+			got, err := Resolve(tt.stability, tt.destination, tt.requested)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("error=%v, want substring %q", err, tt.wantErr)
 				}
 				return
 			}
-			if err != nil || got.Version != tt.want || got.Baseline != tt.baseline || got.Stability != tt.stability || got.Destination != tt.destination {
+			if err != nil || got.Version != tt.want || got.Stability != tt.stability || got.Destination != tt.destination {
 				t.Fatalf("Resolve()=%+v, %v; want version %q", got, err, tt.want)
 			}
 		})
@@ -70,13 +70,13 @@ func TestResolve(t *testing.T) {
 }
 
 func TestDiscoverSkillsMultiple(t *testing.T) {
-	root := validSkills(t, "1.2.3")
-	skills, baseline, err := DiscoverSkills(root)
+	root := validSkills(t, SourceSkillVersion)
+	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if baseline != "1.2.3" || len(skills) != 2 || skills[0].Name != "byted-sample-alpha" || skills[1].Name != "byted-sample-beta" {
-		t.Fatalf("skills=%+v baseline=%q", skills, baseline)
+	if len(skills) != 2 || skills[0].Name != "byted-sample-alpha" || skills[1].Name != "byted-sample-beta" {
+		t.Fatalf("skills=%+v", skills)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 			_ = os.RemoveAll(filepath.Join(root, "skills"))
 			_ = os.Mkdir(filepath.Join(root, "skills"), 0o755)
 		}, wantErr: "no official Skills"},
-		{name: "mismatch", mutate: func(t *testing.T, root string) { writeSkill(t, root, "byted-sample-beta", "1.2.4") }, wantErr: "does not match baseline"},
+		{name: "released version", mutate: func(t *testing.T, root string) { writeSkill(t, root, "byted-sample-beta", "1.2.4") }, wantErr: "source placeholder"},
 		{name: "malformed", mutate: func(t *testing.T, root string) {
 			_ = os.WriteFile(filepath.Join(root, "skills", "byted-sample-alpha", "SKILL.md"), []byte("---\nname: [\n---\n"), 0o644)
 		}, wantErr: "validation failed"},
@@ -114,16 +114,16 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 				t.Skipf("symlinks unavailable: %v", err)
 			}
 		}, wantErr: "must not be a symlink"},
-		{name: "prerelease baseline", mutate: func(t *testing.T, root string) {
+		{name: "other prerelease", mutate: func(t *testing.T, root string) {
 			writeSkill(t, root, "byted-sample-alpha", "1.2.3-dev")
 			writeSkill(t, root, "byted-sample-beta", "1.2.3-dev")
-		}, wantErr: "must be stable"},
+		}, wantErr: "source placeholder"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := validSkills(t, "1.2.3")
+			root := validSkills(t, SourceSkillVersion)
 			tt.mutate(t, root)
-			_, _, err := DiscoverSkills(root)
+			_, err := DiscoverSkills(root)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error=%v, want substring %q", err, tt.wantErr)
 			}
@@ -132,8 +132,8 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 }
 
 func TestStampSkillsPreservesOtherBytes(t *testing.T) {
-	root := validSkills(t, "1.2.3")
-	skills, _, err := DiscoverSkills(root)
+	root := validSkills(t, SourceSkillVersion)
+	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestStampSkillsPreservesOtherBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Replace(string(before), `version: "1.2.3"`, `version: "1.2.3-rc.9"`, 1)
+	want := strings.Replace(string(before), `version: "0.0.0-dev"`, `version: "1.2.3-rc.9"`, 1)
 	if string(after) != want || !strings.Contains(string(after), "sentinel: keep-me") {
 		t.Fatalf("unexpected stamped content:\n%s", after)
 	}

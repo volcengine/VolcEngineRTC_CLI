@@ -31,8 +31,8 @@ func releaseRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	writeSkill(t, root, "byted-sample-alpha", "1.2.3")
-	writeSkill(t, root, "byted-sample-beta", "1.2.3")
+	writeSkill(t, root, "byted-sample-alpha", SourceSkillVersion)
+	writeSkill(t, root, "byted-sample-beta", SourceSkillVersion)
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("committed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -133,11 +133,11 @@ func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "prepared")
-	manifest, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic, Version: "v1.2.3", Source: SourceCommit, Ref: "HEAD"})
+	manifest, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic, Version: "v9.8.7", Source: SourceCommit, Ref: "HEAD"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Source != "commit" || manifest.Version != "1.2.3" {
+	if manifest.Source != "commit" || manifest.Version != "9.8.7" {
 		t.Fatalf("manifest=%+v", manifest)
 	}
 	wantCommit := strings.TrimSpace(git(t, root, "rev-parse", "HEAD"))

@@ -40,11 +40,10 @@ func resolve(args []string) error {
 	stability := flags.String("stability", "", "stable, prerelease, or snapshot")
 	publication := flags.String("publication", "", "public or none")
 	version := flags.String("version", "", "requested version")
-	baseline := flags.String("baseline", "", "stable Skill baseline")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	identity, err := releasecontract.Resolve(releasecontract.Stability(*stability), releasecontract.Destination(*publication), *version, *baseline)
+	identity, err := releasecontract.Resolve(releasecontract.Stability(*stability), releasecontract.Destination(*publication), *version)
 	if err != nil {
 		return err
 	}

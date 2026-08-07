@@ -8,7 +8,49 @@ import (
 	"os"
 	"sort"
 	"testing"
+
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/output"
 )
+
+func TestResolveOutputFormatDefaultsToPrettyInTerminal(t *testing.T) {
+	got := resolveOutputFormat("", true)
+	if got != output.FormatPretty {
+		t.Fatalf("terminal default = %q, want %q", got, output.FormatPretty)
+	}
+}
+
+func TestResolveOutputFormatDefaultsToJSONOutsideTerminal(t *testing.T) {
+	got := resolveOutputFormat("", false)
+	if got != output.FormatJSON {
+		t.Fatalf("non-terminal default = %q, want %q", got, output.FormatJSON)
+	}
+}
+
+func TestResolveOutputFormatHonorsExplicitFormat(t *testing.T) {
+	for _, tc := range []struct {
+		requested string
+		stdoutTTY bool
+		want      output.Format
+	}{
+		{requested: "json", stdoutTTY: true, want: output.FormatJSON},
+		{requested: "pretty", stdoutTTY: false, want: output.FormatPretty},
+		{requested: "table", stdoutTTY: false, want: output.FormatTable},
+	} {
+		if got := resolveOutputFormat(tc.requested, tc.stdoutTTY); got != tc.want {
+			t.Errorf("resolveOutputFormat(%q, %t) = %q, want %q", tc.requested, tc.stdoutTTY, got, tc.want)
+		}
+	}
+}
+
+func TestFormatFlagUsesTerminalAwareDefault(t *testing.T) {
+	format := NewRootCmd().PersistentFlags().Lookup("format")
+	if format == nil {
+		t.Fatal("--format flag is not registered")
+	}
+	if format.DefValue != "" {
+		t.Fatalf("--format default = %q, want terminal-aware default", format.DefValue)
+	}
+}
 
 // TestRootCommandSurface pins the public command surface. Visible
 // commands are what `vertc --help` lists; hidden commands stay registered and

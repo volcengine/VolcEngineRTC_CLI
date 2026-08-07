@@ -78,7 +78,7 @@ if ! grep -Fq 'queue: max' "$workflow"; then
 fi
 build_line="$(grep -n 'name: Build and verify all seven release assets' "$workflow" | cut -d: -f1)"
 npm_input_line="$(grep -n 'name: Prepare verified npm package input' "$workflow" | cut -d: -f1)"
-publish_line="$(grep -n 'name: Stage draft, publish npm latest, then finalize GitHub release' "$workflow" | cut -d: -f1)"
+publish_line="$(grep -n 'name: Stage draft, publish npm package, then finalize GitHub release' "$workflow" | cut -d: -f1)"
 verify_line="$(grep -n 'name: Verify GitHub and npm publication' "$workflow" | cut -d: -f1)"
 [[ "$build_line" -lt "$npm_input_line" && "$npm_input_line" -lt "$publish_line" && "$publish_line" -lt "$verify_line" ]]
 grep -Fq -- '--skip=publish' "$repo_root/scripts/build-release-artifacts.sh"
@@ -97,7 +97,17 @@ grep -Fq './scripts/verify-release-publication.sh' "$workflow"
 grep -Fq 'git cat-file -t "refs/tags/$GITHUB_REF_NAME"' "$workflow"
 grep -Fq 'test "${#assets[@]}" -eq 7' "$workflow"
 grep -Fq -- '--publication public' "$workflow"
-grep -Fq -- '--npm-tag latest' "$workflow"
+grep -Fq 'npm_tag=latest' "$workflow"
+grep -Fq 'npm_tag=next' "$workflow"
+grep -Fq 'echo "VERTC_NPM_TAG=$npm_tag"' "$workflow"
+if [[ "$(grep -Fc -- '--npm-tag "$VERTC_NPM_TAG"' "$workflow")" -ne 2 ]]; then
+  echo "build-release-artifacts-test: publication and verification must share the resolved npm dist-tag" >&2
+  exit 1
+fi
+if grep -Fq -- '--npm-tag latest' "$workflow"; then
+  echo "build-release-artifacts-test: workflow still hard-codes npm latest" >&2
+  exit 1
+fi
 grep -Fq -- '--prerelease "$VERTC_PRERELEASE"' "$workflow"
 grep -Fq 'stability=prerelease' "$workflow"
 grep -Fq 'prerelease=true' "$workflow"

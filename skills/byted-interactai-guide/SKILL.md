@@ -126,9 +126,14 @@ verification）给出结论。完整分阶段路由见 `references/integration-f
   指向本地编辑器或密钥管理工作流。
 - Voice Agent 错误知识已按火山官方「事件和错误码」「公共错误码」核验为 `verified`；无逐项
   公开来源的登录凭证与签名排障条目标为 `curated-seed`，输出会显式提示以官方为准。
-- 生命周期 notice 不得打断当前用户任务：先完成并验证当前任务，再向用户说明。不要擅自执行
-  自动更新；仅在用户明确要求时运行命令。`_notice.update` 指向 `vertc update`，
-  `_notice.skills` 指向 `vertc skills sync`。受控自动化可分别设置
+- 每次读取 `vertc --format json` 的成功或失败输出时，都必须检查顶层 `_notice`，不能只检查
+  首次 `version` 输出。只要观察到 `_notice.update` 或 `_notice.skills`，先记住它，不得静默
+  丢弃；完成并验证当前用户任务后，必须向用户简短提示对应命令。两者同时出现就都提示：
+  `_notice.update` 指向 `vertc update`，`_notice.skills` 指向 `vertc skills sync`。不要擅自执行
+  更新；仅在用户明确要求时运行命令。
+- 生命周期 notice 来自 24 小时本地缓存，不得打断当前任务或给正常命令增加同步网络等待。
+  冷缓存首次调用可能没有 notice，只触发后台刷新；这不代表已是最新版。不要为了等待 notice
+  轮询或重试，继续检查本任务后续每条 `vertc` JSON 输出即可。受控自动化可分别设置
   `VERTC_NO_UPDATE_NOTIFIER=1`、`VERTC_NO_SKILLS_NOTIFIER=1`。
 - `agent` / `env` / `token` 等为内部/legacy 命令（默认隐藏），非默认快速路径；优先用
   公开命令 `init` / `auth login` / `dev` / `doctor` / `explain-error` / `skills`。

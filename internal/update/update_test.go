@@ -74,6 +74,45 @@ func TestRefreshAndCheckCached(t *testing.T) {
 	}
 }
 
+func TestColdCacheBecomesVisibleOnlyAfterRefresh(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VERTC_STATE_DIR", dir)
+	clearAutomationEnvironment(t)
+	t.Setenv("VERTC_NO_UPDATE_NOTIFIER", "")
+	oldURL, oldClient, oldNow := registryURL, httpClient, now
+	requests := 0
+	registryURL = "https://registry.npmjs.org/test"
+	httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"version":"1.2.0"}`)),
+		}, nil
+	})}
+	now = func() time.Time { return time.Unix(1000, 0) }
+	t.Cleanup(func() { registryURL, httpClient, now = oldURL, oldClient, oldNow; SetPending(nil) })
+
+	if info := CheckCached("1.0.0"); info != nil {
+		t.Fatalf("cold cache unexpectedly returned notice: %+v", info)
+	}
+	if requests != 0 {
+		t.Fatalf("cache-only check made %d network requests", requests)
+	}
+
+	if err := RefreshCache(context.Background(), "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Fatalf("refresh made %d network requests, want 1", requests)
+	}
+	if info := CheckCached("1.0.0"); info == nil || info.Latest != "1.2.0" {
+		t.Fatalf("refreshed cache did not expose update: %+v", info)
+	}
+	if requests != 1 {
+		t.Fatalf("post-refresh cache check made a network request; total=%d", requests)
+	}
+}
+
 func TestNotifierGates(t *testing.T) {
 	t.Setenv("VERTC_STATE_DIR", t.TempDir())
 	t.Setenv("VERTC_NO_UPDATE_NOTIFIER", "1")

@@ -1,14 +1,14 @@
 # Automation and structured output
 
-`vertc` defaults to JSON because its command results are designed to be consumed
-by coding agents, scripts, and CI. Human users can select `--format pretty` or
-`--format table`.
+`vertc` uses readable output when stdout is a terminal and JSON when stdout is
+piped or redirected. Coding agents, scripts, and CI should pass `--format json`
+explicitly so their output does not depend on the terminal environment.
 
 ## Stream contract
 
 - stdout contains command data only.
 - stderr contains progress, warnings, and recovery hints.
-- a command writes one JSON envelope to stdout.
+- in JSON mode, a command writes one envelope to stdout.
 - success exits with code 0; failure exits non-zero.
 
 A successful result has this shape:
@@ -41,8 +41,8 @@ human-language messages.
 ## Output formats
 
 ```bash
-vertc doctor                 # default JSON
-vertc doctor --format json
+vertc doctor                 # pretty in a terminal, JSON when redirected
+vertc doctor --format json   # stable choice for automation
 vertc doctor --format pretty
 vertc init --list --format table
 ```

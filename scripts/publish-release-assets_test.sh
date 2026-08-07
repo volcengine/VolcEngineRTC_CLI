@@ -119,9 +119,10 @@ case "$1" in
         [[ -f "$TEST_STATE/npm.shasum" ]] || exit 1
         jq -Rn --arg value "$(cat "$TEST_STATE/npm.shasum")" '$value'
         ;;
-      dist-tags.latest)
-        [[ "${FAIL_NPM_LATEST_LOOKUP:-0}" == 0 ]] || exit 43
-        jq -Rn --arg value "$(cat "$TEST_STATE/npm.latest" 2>/dev/null || true)" '$value'
+      dist-tags.*)
+        [[ "${FAIL_NPM_TAG_LOOKUP:-0}" == 0 ]] || exit 43
+        npm_tag="${field#dist-tags.}"
+        jq -Rn --arg value "$(cat "$TEST_STATE/npm.$npm_tag" 2>/dev/null || true)" '$value'
         ;;
       *) echo "unexpected npm view: $*" >&2; exit 2 ;;
     esac
@@ -129,12 +130,23 @@ case "$1" in
   publish)
     printf 'attempt\n' >> "$TEST_STATE/npm.attempts"
     [[ "${FAIL_NPM:-0}" == 0 ]] || exit 42
+    shift
+    package_tarball="$1"; shift
+    npm_tag=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --tag) npm_tag="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    [[ -n "$npm_tag" ]]
     printf 'publish\n' >> "$TEST_STATE/npm.log"
-    shasum -a 1 "$2" | awk '{print $1}' > "$TEST_STATE/npm.shasum"
-    printf '%s\n' "$TEST_VERSION" > "$TEST_STATE/npm.latest"
+    shasum -a 1 "$package_tarball" | awk '{print $1}' > "$TEST_STATE/npm.shasum"
+    printf '%s\n' "$TEST_VERSION" > "$TEST_STATE/npm.$npm_tag"
     ;;
   dist-tag)
-    printf '%s\n' "$TEST_VERSION" > "$TEST_STATE/npm.latest"
+    [[ "$2" == add && -n "${4:-}" ]]
+    printf '%s\n' "$TEST_VERSION" > "$TEST_STATE/npm.$4"
     ;;
   *) echo "unexpected npm command: $*" >&2; exit 2 ;;
 esac
@@ -149,9 +161,10 @@ if [[ -z "${REAL_NPM:-}" ]]; then
   # PATH now resolves the fake npm; locate the real executable explicitly.
   export REAL_NPM="$(PATH="${PATH#*:}" command -v npm)"
 fi
-publish=("$repo_root/scripts/publish-release-assets.sh" --tag v0.0.1-rc.1 --target "$target" --artifacts "$artifacts" --npm-root "$npm_root" --notes-file "$notes" --prerelease true --latest false --npm-tag latest)
+printf '0.0.0\n' > "$state/npm.latest"
+publish=("$repo_root/scripts/publish-release-assets.sh" --tag v0.0.1-rc.1 --target "$target" --artifacts "$artifacts" --npm-root "$npm_root" --notes-file "$notes" --prerelease true --latest false --npm-tag next)
 
-if (cd "$fixture" && "${publish[@]:0:${#publish[@]}-4}" --prerelease true --latest true --npm-tag latest) >/dev/null 2>&1; then
+if (cd "$fixture" && "${publish[@]:0:${#publish[@]}-4}" --prerelease true --latest true --npm-tag next) >/dev/null 2>&1; then
   echo "publish-release-assets-test: impossible prerelease/latest combination was accepted" >&2
   exit 1
 fi
@@ -168,12 +181,12 @@ if [[ "$(grep -c '^attempt$' "$state/npm.attempts")" -ne 1 ]]; then
 fi
 
 # Registry lookup failures must stop before any npm write is attempted.
-if (cd "$fixture" && FAIL_NPM=1 FAIL_NPM_LATEST_LOOKUP=1 "${publish[@]}") >/dev/null 2>&1; then
-  echo "publish-release-assets-test: npm latest lookup failure was ignored" >&2
+if (cd "$fixture" && FAIL_NPM=1 FAIL_NPM_TAG_LOOKUP=1 "${publish[@]}") >/dev/null 2>&1; then
+  echo "publish-release-assets-test: npm dist-tag lookup failure was ignored" >&2
   exit 1
 fi
 if [[ "$(grep -c '^attempt$' "$state/npm.attempts")" -ne 1 ]]; then
-  echo "publish-release-assets-test: npm write was attempted after latest lookup failure" >&2
+  echo "publish-release-assets-test: npm write was attempted after dist-tag lookup failure" >&2
   exit 1
 fi
 
@@ -207,7 +220,8 @@ mv "$state/release.tmp" "$state/release.json"
 [[ "$(jq -r '.isDraft' "$state/release.json")" == false ]]
 [[ "$(jq -r '.isPrerelease' "$state/release.json")" == true ]]
 grep -Fq -- '--latest=false' "$state/gh.log"
-[[ "$(cat "$state/npm.latest")" == 0.0.1-rc.1 ]]
+[[ "$(cat "$state/npm.next")" == 0.0.1-rc.1 ]]
+[[ "$(cat "$state/npm.latest")" == 0.0.0 ]]
 [[ "$(grep -c '^create$' "$state/gh.log")" -eq 1 ]]
 [[ "$(grep -c '^upload$' "$state/gh.log")" -eq 1 ]]
 
@@ -216,14 +230,15 @@ grep -Fq -- '--latest=false' "$state/gh.log"
 [[ "$(grep -c '^create$' "$state/gh.log")" -eq 1 ]]
 [[ "$(grep -c '^publish$' "$state/npm.log")" -eq 1 ]]
 
-# Rerunning an older workflow must never roll npm latest backward.
-printf '0.0.2\n' > "$state/npm.latest"
+# Rerunning an older workflow must never roll the selected npm channel backward.
+printf '0.0.2\n' > "$state/npm.next"
 if (cd "$fixture" && "${publish[@]}") >/dev/null 2>&1; then
-  echo "publish-release-assets-test: older retry was allowed to move npm latest backward" >&2
+  echo "publish-release-assets-test: older retry was allowed to move npm next backward" >&2
   exit 1
 fi
-[[ "$(cat "$state/npm.latest")" == 0.0.2 ]]
-printf '%s\n' "$TEST_VERSION" > "$state/npm.latest"
+[[ "$(cat "$state/npm.next")" == 0.0.2 ]]
+[[ "$(cat "$state/npm.latest")" == 0.0.0 ]]
+printf '%s\n' "$TEST_VERSION" > "$state/npm.next"
 
 # Conflicting npm content leaves the GitHub Release safely in draft state.
 jq '.isDraft=true' "$state/release.json" > "$state/release.tmp"

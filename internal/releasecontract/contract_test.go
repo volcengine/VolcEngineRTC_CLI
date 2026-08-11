@@ -42,7 +42,7 @@ func TestResolve(t *testing.T) {
 	}{
 		{name: "public stable tag", stability: StabilityStable, destination: DestinationPublic, requested: "v9.8.7", want: "9.8.7"},
 		{name: "public prerelease tag", stability: StabilityPrerelease, destination: DestinationPublic, requested: "v4.5.6-rc.4", want: "4.5.6-rc.4"},
-		{name: "reserved source placeholder", stability: StabilityPrerelease, destination: DestinationPublic, requested: SourceSkillVersion, wantErr: "reserved"},
+		{name: "reserved synthetic dev", stability: StabilityPrerelease, destination: DestinationPublic, requested: syntheticDevVersion, wantErr: "reserved"},
 		{name: "reserved snapshot identity", stability: StabilityPrerelease, destination: DestinationPublic, requested: snapshotVersion, wantErr: "reserved"},
 		{name: "non-publishing prerelease", stability: StabilityPrerelease, destination: DestinationNone, requested: "2.3.4-preview.4", want: "2.3.4-preview.4"},
 		{name: "non-publishing snapshot", stability: StabilitySnapshot, destination: DestinationNone, want: "0.0.0-snapshot"},
@@ -70,7 +70,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestDiscoverSkillsMultiple(t *testing.T) {
-	root := validSkills(t, SourceSkillVersion)
+	root := validSkills(t, "1.2.3")
 	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 			_ = os.RemoveAll(filepath.Join(root, "skills"))
 			_ = os.Mkdir(filepath.Join(root, "skills"), 0o755)
 		}, wantErr: "no official Skills"},
-		{name: "released version", mutate: func(t *testing.T, root string) { writeSkill(t, root, "byted-sample-beta", "1.2.4") }, wantErr: "source placeholder"},
+		{name: "version mismatch", mutate: func(t *testing.T, root string) { writeSkill(t, root, "byted-sample-beta", "1.2.4") }, wantErr: "does not match baseline"},
 		{name: "malformed", mutate: func(t *testing.T, root string) {
 			_ = os.WriteFile(filepath.Join(root, "skills", "byted-sample-alpha", "SKILL.md"), []byte("---\nname: [\n---\n"), 0o644)
 		}, wantErr: "validation failed"},
@@ -114,14 +114,14 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 				t.Skipf("symlinks unavailable: %v", err)
 			}
 		}, wantErr: "must not be a symlink"},
-		{name: "other prerelease", mutate: func(t *testing.T, root string) {
-			writeSkill(t, root, "byted-sample-alpha", "1.2.3-dev")
-			writeSkill(t, root, "byted-sample-beta", "1.2.3-dev")
-		}, wantErr: "source placeholder"},
+		{name: "synthetic dev baseline", mutate: func(t *testing.T, root string) {
+			writeSkill(t, root, "byted-sample-alpha", "0.0.0-dev")
+			writeSkill(t, root, "byted-sample-beta", "0.0.0-dev")
+		}, wantErr: "must be released"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := validSkills(t, SourceSkillVersion)
+			root := validSkills(t, "1.2.3")
 			tt.mutate(t, root)
 			_, err := DiscoverSkills(root)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -132,7 +132,7 @@ func TestDiscoverSkillsRejectsInvalidSet(t *testing.T) {
 }
 
 func TestStampSkillsPreservesOtherBytes(t *testing.T) {
-	root := validSkills(t, SourceSkillVersion)
+	root := validSkills(t, "1.2.3")
 	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestStampSkillsPreservesOtherBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Replace(string(before), `version: "0.0.0-dev"`, `version: "1.2.3-rc.9"`, 1)
+	want := strings.Replace(string(before), `version: "1.2.3"`, `version: "1.2.3-rc.9"`, 1)
 	if string(after) != want || !strings.Contains(string(after), "sentinel: keep-me") {
 		t.Fatalf("unexpected stamped content:\n%s", after)
 	}

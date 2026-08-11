@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -88,11 +87,20 @@ func newDevCmd() *cobra.Command {
 		reconfigure bool
 		appID       string
 		botIDs      []string
+		webPort     int
+		serverPort  int
+		autoPort    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "dev",
 		Short: "Start local dev (runs the template's `dev` task)",
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := validateDevPortOverrides(
+				c.Flags().Changed("web-port"), webPort,
+				c.Flags().Changed("server-port"), serverPort,
+			); err != nil {
+				return err
+			}
 			cfg, path, err := config.LoadNearest(".")
 			if err != nil {
 				return err
@@ -145,6 +153,16 @@ func newDevCmd() *cobra.Command {
 				return errs.New("vertc.template.not_found", errs.TypeNotFound,
 					"taskfile has no `dev` task").WithHint("regenerate with `%s init`", meta.BinName)
 			}
+			ports, err := resolveDevPorts(tf, webPort, serverPort)
+			if err != nil {
+				return err
+			}
+			if autoPort {
+				ports, err = autoSelectDevPorts(ports)
+				if err != nil {
+					return err
+				}
+			}
 
 			// Legacy voice-agent projects keep their explicit, CLI-managed start
 			// flow. Full-stack v2 projects start and stop through the web/server.
@@ -156,6 +174,9 @@ func newDevCmd() *cobra.Command {
 				out().Progress("dry-run: not executing")
 				result := map[string]any{
 					"dir": dir, "dev_task": tf.Tasks.Dev, "install_task": tf.Tasks.Install,
+				}
+				for key, value := range devRuntimeData(dir, "dry-run", ports) {
+					result[key] = value
 				}
 				if devSetupRequired {
 					bootstrap := map[string]any{
@@ -174,6 +195,9 @@ func newDevCmd() *cobra.Command {
 				}
 				return out().Data(result)
 			}
+			if err := preflightDevPorts(ports); err != nil {
+				return err
+			}
 
 			// Install deps first when node_modules is absent (best-effort).
 			if _, statErr := os.Stat(filepath.Join(dir, "node_modules")); os.IsNotExist(statErr) && len(tf.Tasks.Install) > 0 {
@@ -181,6 +205,16 @@ func newDevCmd() *cobra.Command {
 				if err := runTasksWithEnv(dir, tf.Tasks.Install, nil); err != nil {
 					return err
 				}
+			}
+			// Installation can take minutes, so close the check/use window before
+			// launching the actual dev processes.
+			if autoPort {
+				ports, err = autoSelectDevPorts(ports)
+			} else {
+				err = preflightDevPorts(ports)
+			}
+			if err != nil {
+				return err
 			}
 
 			var taskEnv []string
@@ -190,10 +224,35 @@ func newDevCmd() *cobra.Command {
 					return err
 				}
 			}
+			portEnv, cleanupPortEnv, err := prepareDevPortTaskEnv(ports)
+			if err != nil {
+				return err
+			}
+			defer cleanupPortEnv()
+			taskEnv = append(taskEnv, portEnv...)
 
 			out().Progress("starting dev server (%v) in %s", tf.Tasks.Dev, dir)
-			if err := runTasksWithEnv(dir, tf.Tasks.Dev, taskEnv); err != nil {
+			reported := false
+			reportStarted := func() error {
+				if ports.Web == 0 && ports.Server == 0 {
+					return nil
+				}
+				if err := out().Data(devRuntimeData(dir, "starting", ports)); err != nil {
+					return err
+				}
+				reported = true
+				return nil
+			}
+			if err := runTasksWithEnvAfterStart(dir, tf.Tasks.Dev, taskEnv, reportStarted); err != nil {
+				if reported {
+					if typed, ok := errs.As(err); ok {
+						return typed.Reported()
+					}
+				}
 				return err
+			}
+			if reported {
+				return nil
 			}
 			return out().Data(map[string]any{"dir": dir, "status": "dev exited"})
 		},
@@ -201,11 +260,14 @@ func newDevCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&reconfigure, "reconfigure", false, "select the RTC application and conversational-AI bot scenes again")
 	cmd.Flags().StringVar(&appID, "app-id", "", "select an RTC application by public AppID")
 	cmd.Flags().StringArrayVar(&botIDs, "bot-id", nil, "select a conversational-AI bot by public ID (repeatable)")
+	cmd.Flags().IntVar(&webPort, "web-port", 0, "override the template web port")
+	cmd.Flags().IntVar(&serverPort, "server-port", 0, "override the template server port")
+	cmd.Flags().BoolVar(&autoPort, "auto-port", false, "replace occupied template ports with available local ports")
 	affordance.Attach(cmd, affordance.Affordance{
 		When:     []string{"Running a scaffold locally; first run selects the RTC application and bot scenes"},
 		Avoid:    []string{"Non-interactive automation while RTC AppID or AppKey is unset"},
 		Prereq:   []string{"Valid non-credential config and Node toolchain; run auth login before interactive credential discovery"},
-		Examples: []string{meta.BinName + " dev", meta.BinName + " dev --app-id <id> --bot-id <id>", meta.BinName + " dev --reconfigure", meta.BinName + " dev --dry-run"},
+		Examples: []string{meta.BinName + " dev", meta.BinName + " dev --app-id <id> --bot-id <id>", meta.BinName + " dev --web-port 3002 --server-port 3001", meta.BinName + " dev --auto-port", meta.BinName + " dev --reconfigure", meta.BinName + " dev --dry-run"},
 	})
 	return cmd
 }
@@ -928,7 +990,7 @@ func taskShellCommand(goos, cmdline string) (string, []string) {
 		if shell == "" {
 			shell = "cmd.exe"
 		}
-		return shell, []string{"/D", "/S", "/C", cmdline}
+		return shell, []string{"/D", "/C", cmdline}
 	}
 	return "sh", []string{"-c", cmdline}
 }
@@ -937,9 +999,16 @@ func taskShellCommand(goos, cmdline string) (string, []string) {
 // dir, adding taskEnv only to child processes and streaming output to stderr so
 // stdout remains data-only.
 func runTasksWithEnv(dir string, cmds, taskEnv []string) error {
+	return runTasksWithEnvAfterStart(dir, cmds, taskEnv, nil)
+}
+
+// runTasksWithEnvAfterStart delays the optional start notification briefly so
+// shell lookup errors and immediately failing template commands remain normal
+// typed failures instead of being hidden behind a premature success envelope.
+func runTasksWithEnvAfterStart(dir string, cmds, taskEnv []string, afterStart func() error) error {
 	for _, cmdline := range cmds {
-		shell, args := taskShellCommand(runtime.GOOS, cmdline)
-		cmd := exec.Command(shell, args...)
+		shell, _ := taskShellCommand(runtime.GOOS, cmdline)
+		cmd := buildTaskCmd(shell, cmdline)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), taskEnv...)
 		cmd.Stdout = os.Stderr
@@ -968,7 +1037,26 @@ func runTasksWithEnv(dir string, cmds, taskEnv []string) error {
 				}
 			}
 		}()
-		err := cmd.Wait()
+		waited := make(chan error, 1)
+		go func() { waited <- cmd.Wait() }()
+		var err error
+		if afterStart != nil {
+			select {
+			case err = <-waited:
+			case <-time.After(250 * time.Millisecond):
+				if notifyErr := afterStart(); notifyErr != nil {
+					_ = cmd.Process.Signal(syscall.SIGTERM)
+					<-waited
+					close(done)
+					signal.Stop(signals)
+					return notifyErr
+				}
+				afterStart = nil
+				err = <-waited
+			}
+		} else {
+			err = <-waited
+		}
 		close(done)
 		signal.Stop(signals)
 		if err != nil {

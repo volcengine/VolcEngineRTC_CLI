@@ -34,6 +34,13 @@ type Taskfile struct {
 type Runtime struct {
 	Topology     string `yaml:"topology,omitempty"`
 	AgentControl string `yaml:"agent_control,omitempty"`
+	Ports        Ports  `yaml:"ports,omitempty"`
+}
+
+// Ports declares the local listeners owned by a web-server template.
+type Ports struct {
+	Web    int `yaml:"web,omitempty"`
+	Server int `yaml:"server,omitempty"`
 }
 
 // ServerManagedAgent reports whether the companion server, rather than the

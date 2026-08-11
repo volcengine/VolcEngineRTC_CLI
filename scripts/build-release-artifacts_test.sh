@@ -37,8 +37,10 @@ expected_identity="$(git -C "$repo_root" rev-parse HEAD)
 $(git -C "$repo_root" show -s --format=%cI HEAD)
 $(git -C "$repo_root" show -s --format=%ct HEAD)
 $(git -C "$repo_root" show -s --format=%cI HEAD)"
-if [[ "$(cat "$identity_capture" 2>/dev/null || true)" != "$expected_identity" ]]; then
+observed_identity="$(cat "$identity_capture" 2>/dev/null || true)"
+if [[ "$observed_identity" != "$expected_identity" ]]; then
   echo "build-release-artifacts-test: release build did not receive deterministic source identity" >&2
+  printf 'expected:\n%s\nobserved:\n%s\n' "$expected_identity" "$observed_identity" >&2
   exit 1
 fi
 if [[ "$(cat "$remote_capture" 2>/dev/null || true)" != "https://github.com/volcengine/VolcEngineRTC_CLI.git" ]]; then

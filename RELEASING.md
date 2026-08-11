@@ -6,17 +6,18 @@ GitHub Release, and publishes `@volcengine/rtc-cli` to npm.
 
 ## Version identity and channels
 
-Every checked-in official `skills/<name>/SKILL.md` uses the reserved valid
-SemVer placeholder `0.0.0-dev`. Release preparation treats the requested tag as
-the version authority and replaces that placeholder only in an isolated source
-copy. One canonical version is then reused for CLI metadata, embedded and
-archived Skills, archive names, checksums, and npm metadata.
+Every official `skills/<name>/SKILL.md` and the root `package.json` carry the
+real stable or prerelease version that will be committed before publication.
+Stable and prerelease tags must exactly match those committed values. One
+canonical version is reused for Git source, CLI metadata, embedded and archived
+Skills, archive names, checksums, and npm metadata. Never reset checked-in
+Skills to `0.0.0-dev` after a release.
 
-The public-source audit is version-independent. After the reviewed tree reaches
-GitHub `main`, choose the release version and run the committed-source contract
-preflight against that exact commit before requesting publication approval. A
-later version change leaves the unchanged source review valid but invalidates
-prepared release artifacts, release notes, and publication approval.
+Prepare the version as a reviewed change before publication. After the reviewed
+commit reaches GitHub `main`, run the committed-source contract preflight
+against that exact commit before creating the tag. A later version change
+requires a new reviewed commit and invalidates prepared artifacts, release
+notes, and previous verification results.
 
 ```bash
 ./scripts/preflight-public-release.sh \
@@ -38,8 +39,8 @@ Before publishing, confirm:
 
 - the requested version passed `preflight-public-release.sh` against the exact
   GitHub `main` commit;
-- every checked-in official Skill uses `0.0.0-dev`, while every prepared and
-  archived Skill uses the requested release version;
+- root `package.json` and every checked-in official Skill use the exact requested
+  stable or prerelease version;
 - the release commit is present on GitHub `main` and all required checks pass;
 - `CHANGELOG.md`, `LICENSE`, `NOTICE`, the READMEs, and every official Skill are
   ready;
@@ -47,6 +48,23 @@ Before publishing, confirm:
 - the `NPM_TOKEN` repository secret can publish `@volcengine/rtc-cli` publicly;
 - `make ci` and `make check-release-files` pass; and
 - the requested tag and npm version do not already exist.
+
+Prepare the version as a reviewed change:
+
+```bash
+make prepare-release-version RELEASE_VERSION=0.0.4
+git diff -- package.json 'skills/*/SKILL.md'
+make ci
+```
+
+Commit the resulting metadata on a branch and send it through the maintainers'
+normal review process. The command changes files only; it never commits, pushes,
+tags, or publishes. After the reviewed commit reaches GitHub `main`, verify the
+exact source before continuing:
+
+```bash
+make check-release-version RELEASE_VERSION=0.0.4
+```
 
 For local artifact confidence without publication, install the pinned release
 tool once and run:
@@ -59,8 +77,8 @@ make release-snapshot-test
 
 ## Publish
 
-1. After public-source review and GitHub synchronization, freeze the version and
-   run the committed-source contract preflight against exact GitHub `main`.
+1. Verify the committed version with `make check-release-version`, then run the
+   committed-source contract preflight against exact GitHub `main`.
 2. Prepare complete release notes.
 3. Create an annotated SemVer tag on the reviewed GitHub `main` commit. Stable
    tags use `vX.Y.Z`; prerelease tags use a SemVer suffix such as

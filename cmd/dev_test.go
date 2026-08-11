@@ -8,11 +8,15 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/config"
 	projectenv "github.com/volcengine/VolcEngineRTC_CLI/internal/env"
@@ -56,7 +60,7 @@ func (f *fakeRTCAppClient) AibotxQuery(context.Context, int, int) ([]openapi.Bot
 
 func TestDevSetupFlags(t *testing.T) {
 	cmd := newDevCmd()
-	for _, name := range []string{"app-id", "bot-id", "reconfigure"} {
+	for _, name := range []string{"app-id", "bot-id", "reconfigure", "web-port", "server-port", "auto-port"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("missing dev flag %q", name)
 		}
@@ -69,6 +73,16 @@ func TestDevSetupFlags(t *testing.T) {
 	typed, ok := errs.As(err)
 	if !ok || typed.Code != "vertc.cli.invalid_flag" {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestDevPortFlagsRejectZero(t *testing.T) {
+	cmd := newDevCmd()
+	cmd.SetArgs([]string{"--web-port", "0"})
+	err := cmd.Execute()
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.cli.invalid_flag" || typed.Param != "--web-port" {
+		t.Fatalf("error = %v, want invalid --web-port", err)
 	}
 }
 
@@ -704,6 +718,267 @@ func TestDevDryRunReportsBootstrapWithoutOpenAPIOrWrite(t *testing.T) {
 	}
 }
 
+func TestDevV2WebServerDryRunReportsDefaultPorts(t *testing.T) {
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  topology: web-server\ntasks:\n  dev:\n    - 'false'\n"
+	setupDevPortProject(t, taskfile)
+	previousDryRun := flagDryRun
+	flagDryRun = true
+	t.Cleanup(func() { flagDryRun = previousDryRun })
+
+	stdout, err := captureDevStdout(newDevCmd().Execute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data struct {
+			Ports map[string]int    `json:"ports"`
+			URLs  map[string]string `json:"urls"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("decode dry-run output %q: %v", stdout, err)
+	}
+	if envelope.Data.Ports["web"] != 3000 || envelope.Data.Ports["server"] != 3001 {
+		t.Fatalf("default v2 ports = %+v", envelope.Data.Ports)
+	}
+}
+
+func TestDevRejectsOccupiedPortBeforeInstall(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a POSIX lsof shim")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(port) + "\ntasks:\n  install:\n    - 'touch install-ran'\n  dev:\n    - 'touch dev-ran'\n"
+	dir := setupDevPortProject(t, taskfile)
+	binDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lsof := "#!/bin/sh\ncase \"$*\" in\n  *'-d cwd'*) printf 'p4242\\nfcwd\\nn/tmp/other-project\\n' ;;\n  *) printf 'p4242\\ncnode\\n' ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(binDir, "lsof"), []byte(lsof), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	err = newDevCmd().Execute()
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.dev.port_in_use" {
+		t.Fatalf("dev error = %v, want vertc.dev.port_in_use", err)
+	}
+	occupant, ok := typed.Details["occupant"].(map[string]any)
+	if !ok || occupant["pid"] != 4242 || occupant["process"] != "node" || occupant["directory"] != "/tmp/other-project" {
+		t.Fatalf("port occupant details = %#v", typed.Details["occupant"])
+	}
+	if !strings.Contains(typed.Message, "node") || !strings.Contains(typed.Message, "/tmp/other-project") {
+		t.Fatalf("port error does not identify occupant: %q", typed.Message)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "install-ran")); !os.IsNotExist(statErr) {
+		t.Fatalf("install ran before port preflight: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "dev-ran")); !os.IsNotExist(statErr) {
+		t.Fatalf("dev task ran with occupied port: %v", statErr)
+	}
+}
+
+func TestDevPortFlagsOverrideTaskfileAndReachDevTask(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = occupied.Close() })
+	declaredPort := occupied.Addr().(*net.TCPAddr).Port
+	webPort := reserveThenReleasePort(t)
+	serverPort := reserveThenReleasePort(t)
+
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(declaredPort) + "\n    server: 3001\ntasks:\n  dev:\n    - " + strconv.Quote(devPortHelperCommand(t)) + "\n"
+	dir := setupDevPortProject(t, taskfile)
+
+	cmd := newDevCmd()
+	cmd.SetArgs([]string{"--web-port", strconv.Itoa(webPort), "--server-port", strconv.Itoa(serverPort)})
+	stdout, err := captureDevStdout(cmd.Execute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data struct {
+			Status string            `json:"status"`
+			Ports  map[string]int    `json:"ports"`
+			URLs   map[string]string `json:"urls"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("decode dev output %q: %v", stdout, err)
+	}
+	if envelope.Data.Status != "starting" || envelope.Data.Ports["web"] != webPort || envelope.Data.Ports["server"] != serverPort {
+		t.Fatalf("structured dev ports = %+v", envelope.Data)
+	}
+	if envelope.Data.URLs["web"] != "http://localhost:"+strconv.Itoa(webPort) || envelope.Data.URLs["server"] != "http://localhost:"+strconv.Itoa(serverPort) {
+		t.Fatalf("structured dev URLs = %+v", envelope.Data.URLs)
+	}
+	if got := strings.TrimSpace(readFileForDevTest(t, filepath.Join(dir, "web-port"))); got != strconv.Itoa(webPort) {
+		t.Fatalf("web process PORT = %q, want %d", got, webPort)
+	}
+	if got := strings.TrimSpace(readFileForDevTest(t, filepath.Join(dir, "server-port"))); got != strconv.Itoa(serverPort) {
+		t.Fatalf("server process PORT = %q, want %d", got, serverPort)
+	}
+}
+
+func TestDevImmediateTaskFailureDoesNotEmitSuccess(t *testing.T) {
+	webPort := reserveThenReleasePort(t)
+	serverPort := reserveThenReleasePort(t)
+	failureCommand := "exit 7"
+	if runtime.GOOS == "windows" {
+		failureCommand = "exit /b 7"
+	}
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(webPort) + "\n    server: " + strconv.Itoa(serverPort) + "\ntasks:\n  dev:\n    - " + strconv.Quote(failureCommand) + "\n"
+	setupDevPortProject(t, taskfile)
+
+	stdout, err := captureDevStdout(newDevCmd().Execute)
+	if err == nil {
+		t.Fatal("dev unexpectedly succeeded")
+	}
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.dev.task_failed" || typed.IsReported() {
+		t.Fatalf("error = %#v, want unreported vertc.dev.task_failed", err)
+	}
+	if len(stdout) != 0 {
+		t.Fatalf("immediate task failure emitted success data: %q", stdout)
+	}
+}
+
+func captureDevStdout(run func() error) ([]byte, error) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	previous := os.Stdout
+	os.Stdout = writer
+	runErr := run()
+	_ = writer.Close()
+	os.Stdout = previous
+	raw, readErr := io.ReadAll(reader)
+	_ = reader.Close()
+	if runErr != nil {
+		return raw, runErr
+	}
+	return raw, readErr
+}
+
+func TestDevAutoPortReplacesOnlyOccupiedPort(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = occupied.Close() })
+	occupiedPort := occupied.Addr().(*net.TCPAddr).Port
+	serverPort := reserveThenReleasePort(t)
+
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(occupiedPort) + "\n    server: " + strconv.Itoa(serverPort) + "\ntasks:\n  dev:\n    - " + strconv.Quote(devPortHelperCommand(t)) + "\n"
+	dir := setupDevPortProject(t, taskfile)
+
+	cmd := newDevCmd()
+	cmd.SetArgs([]string{"--auto-port"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	webRaw, err := os.ReadFile(filepath.Join(dir, "web-port"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	webPort, err := strconv.Atoi(string(webRaw))
+	if err != nil || webPort == occupiedPort || webPort < 1 {
+		t.Fatalf("auto-selected web port = %q, occupied = %d", webRaw, occupiedPort)
+	}
+	serverRaw, err := os.ReadFile(filepath.Join(dir, "server-port"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(serverRaw) != strconv.Itoa(serverPort) {
+		t.Fatalf("unoccupied server port changed to %q, want %d", serverRaw, serverPort)
+	}
+}
+
+func reserveThenReleasePort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
+func setupDevPortProject(t *testing.T, taskfile string) string {
+	t.Helper()
+	previousWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previousWD) })
+	if err := config.Save(config.Default("demo", "test-scene", "web"), config.Path(dir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vertc.taskfile.yaml"), []byte(taskfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RTC_APP_ID", "aabbccddeeff001122334455")
+	t.Setenv("RTC_APP_KEY", "secret")
+	return dir
+}
+
+func devPortHelperCommand(t *testing.T) string {
+	t.Helper()
+	t.Setenv("GO_WANT_DEV_PORT_HELPER", "1")
+	return testHelperCommand(t, "TestDevPortHelperProcess")
+}
+
+func testHelperCommand(t *testing.T, testName string) string {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return `"` + strings.ReplaceAll(executable, `"`, `""`) + `" -test.run=^` + testName + `$`
+	}
+	return "'" + strings.ReplaceAll(executable, "'", "'\"'\"'") + "' -test.run=^" + testName + "$"
+}
+
+func TestDevPortHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_DEV_PORT_HELPER") != "1" {
+		return
+	}
+	if err := os.WriteFile("web-port", []byte(os.Getenv("VERTC_WEB_PORT")), 0o644); err != nil {
+		os.Exit(2)
+	}
+	if err := os.WriteFile("server-port", []byte(os.Getenv("VERTC_SERVER_PORT")), 0o644); err != nil {
+		os.Exit(2)
+	}
+	time.Sleep(350 * time.Millisecond)
+	os.Exit(0)
+}
+
+func readFileForDevTest(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 func TestDevBootstrapsCredentialsThenRunsTask(t *testing.T) {
 	previousWD, err := os.Getwd()
 	if err != nil {
@@ -718,7 +993,11 @@ func TestDevBootstrapsCredentialsThenRunsTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	selectedAppID := "aabbccddeeff001122334455"
-	taskfile := "version: 1\nscene: test-scene\nplatform: web\ntasks:\n  dev:\n    - 'test \"$RTC_APP_ID\" = \"" + selectedAppID + "\" && test \"$RTC_APP_KEY\" = \"secret\" && touch dev-ran'\n"
+	t.Setenv("GO_WANT_DEV_CREDENTIALS_HELPER", "1")
+	t.Setenv("WANT_RTC_APP_ID", selectedAppID)
+	t.Setenv("WANT_RTC_APP_KEY", "secret")
+	command := testHelperCommand(t, "TestDevCredentialsHelperProcess")
+	taskfile := "version: 1\nscene: test-scene\nplatform: web\ntasks:\n  dev:\n    - " + strconv.Quote(command) + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "vertc.taskfile.yaml"), []byte(taskfile), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -757,6 +1036,21 @@ func TestDevBootstrapsCredentialsThenRunsTask(t *testing.T) {
 	}
 	if values["RTC_APP_ID"] != selectedAppID || values["RTC_APP_KEY"] != "secret" {
 		t.Fatalf("persisted env = %+v", values)
+	}
+}
+
+func TestDevCredentialsHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_DEV_CREDENTIALS_HELPER") != "1" {
+		return
+	}
+	if got, want := os.Getenv("RTC_APP_ID"), os.Getenv("WANT_RTC_APP_ID"); got != want {
+		t.Fatalf("RTC_APP_ID = %q, want %q", got, want)
+	}
+	if got, want := os.Getenv("RTC_APP_KEY"), os.Getenv("WANT_RTC_APP_KEY"); got != want {
+		t.Fatalf("RTC_APP_KEY = %q, want %q", got, want)
+	}
+	if err := os.WriteFile("dev-ran", []byte("ran"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -881,13 +1175,23 @@ func taskEnvValue(values []string, key string) string {
 
 func TestRunTasksWithEnvInjectsOnlyIntoChild(t *testing.T) {
 	const key = "VERTC_TEST_CHILD_ONLY"
-	_ = os.Unsetenv(key)
-	t.Cleanup(func() { _ = os.Unsetenv(key) })
-	if err := runTasksWithEnv(t.TempDir(), []string{`test "$VERTC_TEST_CHILD_ONLY" = "available"`}, []string{key + "=available"}); err != nil {
+	t.Setenv(key, "parent")
+	t.Setenv("GO_WANT_TASK_ENV_HELPER", "1")
+	command := testHelperCommand(t, "TestTaskEnvHelperProcess")
+	if err := runTasksWithEnv(t.TempDir(), []string{command}, []string{key + "=available"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := os.LookupEnv(key); exists {
-		t.Fatal("task environment leaked into the CLI process")
+	if os.Getenv(key) != "parent" {
+		t.Fatal("task environment leaked into or replaced the CLI process environment")
+	}
+}
+
+func TestTaskEnvHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_TASK_ENV_HELPER") != "1" {
+		return
+	}
+	if got := os.Getenv("VERTC_TEST_CHILD_ONLY"); got != "available" {
+		t.Fatalf("child task environment = %q, want available", got)
 	}
 }
 
@@ -897,7 +1201,17 @@ func TestTaskShellCommandUsesCmdOnWindows(t *testing.T) {
 	if name != `C:\Windows\System32\cmd.exe` {
 		t.Fatalf("shell = %q, want ComSpec", name)
 	}
-	wantArgs := []string{"/D", "/S", "/C", "yarn dev"}
+	wantArgs := []string{"/D", "/C", "yarn dev"}
+	if !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("args = %q, want %q", args, wantArgs)
+	}
+}
+
+func TestTaskShellCommandPreservesQuotedCommandOnWindows(t *testing.T) {
+	t.Setenv("ComSpec", `C:\Windows\System32\cmd.exe`)
+	command := `"C:\Program Files\vertc\helper.exe" -test.run=^TestHelper$`
+	_, args := taskShellCommand("windows", command)
+	wantArgs := []string{"/D", "/C", command}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("args = %q, want %q", args, wantArgs)
 	}

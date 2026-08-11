@@ -61,7 +61,7 @@ func TestVoiceAgentInitSeedsFullStackProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"version: 2", "topology: web-server", "agent_control: server", "yarn dev"} {
+	for _, want := range []string{"version: 2", "topology: web-server", "agent_control: server", "web: 3000", "server: 3001", "yarn dev"} {
 		if !strings.Contains(string(taskfile), want) {
 			t.Fatalf("taskfile missing %q:\n%s", want, taskfile)
 		}

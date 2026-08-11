@@ -40,6 +40,9 @@ platform: web
 runtime:
   topology: web-server
   agent_control: server
+  ports:
+    web: 3000
+    server: 3001
 tasks:
   dev: ["pnpm dev"]
 `)
@@ -49,6 +52,9 @@ tasks:
 	}
 	if tf.Runtime.Topology != "web-server" || !tf.ServerManagedAgent() {
 		t.Fatalf("v2 runtime not parsed: %+v", tf.Runtime)
+	}
+	if tf.Runtime.Ports.Web != 3000 || tf.Runtime.Ports.Server != 3001 {
+		t.Fatalf("v2 runtime ports not parsed: %+v", tf.Runtime.Ports)
 	}
 }
 

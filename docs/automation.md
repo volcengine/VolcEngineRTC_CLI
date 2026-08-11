@@ -117,8 +117,15 @@ export VERTC_NO_SKILLS_NOTIFIER=1
 
 ## Official Skills
 
-Install or refresh the current CLI release's embedded scene workflow playbooks
-without repository access:
+Install the latest released official scene workflow directly from the public
+repository; this path does not require `vertc` to be installed first:
+
+```bash
+npx skills add volcengine/VolcEngineRTC_CLI -g -y
+```
+
+When the CLI is already installed, align or repair global Agent runtimes from
+the scene workflow embedded in that exact CLI release:
 
 ```bash
 vertc skills sync
@@ -143,9 +150,9 @@ are identical. Release postflight reads the embedded Markdown itself; consumers
 therefore do not need repository access or a separate Skill-version mapping.
 
 `vertc update` reuses the same synchronization after updating an npm-managed
-binary. Direct public-repository installation remains available with
-`npx skills add volcengine/VolcEngineRTC_CLI -g -y`, but `vertc skills sync`
-keeps the installed content tied to the running binary release.
+binary. The direct public-repository path follows the latest released content;
+`vertc skills sync` instead keeps the installed content tied to the running
+binary release.
 
 ## Failure routing
 

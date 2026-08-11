@@ -51,6 +51,15 @@ case "${1:-} ${2:-}" in
   'api repos/test/repo/git/tags/test-tag-object')
     printf '%s\n' "$TEST_TARGET"
     ;;
+  'api repos/test/repo/contents/package.json?ref=v0.0.1-rc.2')
+    printf '%s\n' '{"name":"@volcengine/rtc-cli","version":"0.0.1-rc.2"}'
+    ;;
+  "api repos/test/repo/git/trees/$TEST_TARGET?recursive=1")
+    printf '%s\n' 'skills/release-test/SKILL.md'
+    ;;
+  'api repos/test/repo/contents/skills/release-test/SKILL.md?ref=v0.0.1-rc.2')
+    printf '%s\n' '---' 'name: release-test' "version: \"${TEST_TAG_SKILL_VERSION:-0.0.1-rc.2}\"" '---' '' '# Fixture' "${TEST_TAG_SKILL_BODY:-}"
+    ;;
   'api repos/test/repo/releases/latest')
     printf '%s\n' v0.0.1
     ;;
@@ -94,5 +103,23 @@ TEST_ASSETS="$assets" \
     --prerelease true \
     --latest false \
     --npm-tag latest >/dev/null
+
+if PATH="$fakebin:$PATH" \
+  TEST_TARGET="$target" \
+  TEST_RELEASE_JSON="$tmp/release.json" \
+  TEST_ASSETS="$assets" \
+  TEST_TAG_SKILL_VERSION="0.0.0-dev" \
+  TEST_TAG_SKILL_BODY='version: "0.0.1-rc.2"' \
+  "$repo_root/scripts/verify-release-publication.sh" \
+    --repository test/repo \
+    --tag "$tag" \
+    --target "$target" \
+    --notes-file "$notes" \
+    --prerelease true \
+    --latest false \
+    --npm-tag latest >/dev/null 2>&1; then
+  echo "verify-release-publication-test: mismatched tag Skill version was accepted" >&2
+  exit 1
+fi
 
 echo "verify-release-publication-test: passed"

@@ -41,16 +41,73 @@ done
 [[ "$prerelease" == "true" || "$prerelease" == "false" ]] || die "--prerelease must be true or false"
 [[ "$latest" == "true" || "$latest" == "false" ]] || die "--latest must be true or false"
 [[ "$prerelease" != "true" || "$latest" == "false" ]] || die "GitHub prereleases cannot be Latest"
-for command_name in gh npm jq shasum tar unzip grep find; do
+for command_name in gh npm jq shasum tar unzip grep find awk; do
   command -v "$command_name" >/dev/null 2>&1 || die "missing required command: $command_name"
 done
 
+skill_frontmatter_version() {
+  awk '
+    NR == 1 {
+      line = $0
+      sub(/\r$/, "", line)
+      if (line != "---") exit 2
+      next
+    }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      if (line == "---") {
+        closed = 1
+        if (count != 1) exit 3
+        print version
+        exit 0
+      }
+      if (line ~ /^[[:space:]]*version:[[:space:]]*/) {
+        count++
+        sub(/^[[:space:]]*version:[[:space:]]*/, "", line)
+        if (line ~ /^"[^"]*"$/) {
+          sub(/^"/, "", line)
+          sub(/"$/, "", line)
+        }
+        version = line
+      }
+    }
+    END {
+      if (!closed) exit 4
+    }
+  ' "$1"
+}
+
+tmp_root="$(mktemp -d)"
+trap 'rm -rf "$tmp_root"' EXIT
 version="${tag#v}"
 tag_object_type="$(gh api "repos/$repository/git/ref/tags/$tag" --jq '.object.type')"
 tag_object_sha="$(gh api "repos/$repository/git/ref/tags/$tag" --jq '.object.sha')"
 [[ "$tag_object_type" == "tag" ]] || die "public version tag must be annotated"
 remote_target="$(gh api "repos/$repository/git/tags/$tag_object_sha" --jq '.object.sha')"
 [[ "$remote_target" == "$target" ]] || die "tag target mismatch: expected $target, observed $remote_target"
+
+tag_source="$tmp_root/tag-source"
+mkdir -p "$tag_source"
+gh api "repos/$repository/contents/package.json?ref=$tag" \
+  -H 'Accept: application/vnd.github.raw' > "$tag_source/package.json"
+[[ "$(jq -er '.version' "$tag_source/package.json")" == "$version" ]] \
+  || die "tag package.json version does not match $version"
+tag_skill_paths=()
+while IFS= read -r skill_path; do tag_skill_paths+=("$skill_path"); done < <(
+  gh api "repos/$repository/git/trees/$remote_target?recursive=1" \
+    --jq '.tree[] | select(.type == "blob") | .path | select(test("^skills/[^/]+/SKILL\\.md$"))'
+)
+[[ "${#tag_skill_paths[@]}" -gt 0 ]] || die "tag source has no official Skills"
+for skill_path in "${tag_skill_paths[@]}"; do
+  skill_file="$tag_source/$(basename "$(dirname "$skill_path")").SKILL.md"
+  gh api "repos/$repository/contents/$skill_path?ref=$tag" \
+    -H 'Accept: application/vnd.github.raw' > "$skill_file"
+  observed_skill_version="$(skill_frontmatter_version "$skill_file")" \
+    || die "tag Skill frontmatter is invalid: $skill_path"
+  [[ "$observed_skill_version" == "$version" ]] \
+    || die "tag Skill version mismatch: $skill_path"
+done
 
 if [[ -n "$run_id" ]]; then
   run_json="$(gh run view "$run_id" --repo "$repository" --json status,conclusion,headSha,event)"
@@ -60,8 +117,6 @@ if [[ -n "$run_id" ]]; then
   [[ "$(jq -r '.event' <<< "$run_json")" == "push" ]] || die "workflow run was not tag-triggered"
 fi
 
-tmp_root="$(mktemp -d)"
-trap 'rm -rf "$tmp_root"' EXIT
 release_json="$tmp_root/release.json"
 gh release view "$tag" --repo "$repository" --json tagName,name,body,isDraft,isPrerelease,targetCommitish,assets > "$release_json"
 [[ "$(jq -r '.isDraft' "$release_json")" == "false" ]] || die "release is still a draft"

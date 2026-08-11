@@ -28,7 +28,7 @@ const testScene = `{"SceneConfig":{"Name":"Default"},"VoiceChat":{"Config":{"ASR
 func remoteFixture() map[string]string {
 	return map[string]string{
 		"vertc.template.yaml":          "version: 1\nscene: voice-agent\nplatform: web\nagent_config: server/scenes/default.json\nrequired_files:\n  - package.json\n  - server/scenes/default.json\n  - vertc.taskfile.yaml\n",
-		"vertc.taskfile.yaml":          "version: 2\nscene: voice-agent\nplatform: web\nsdk:\n  name: '@volcengine/rtc'\n  version: '4.68.1'\nruntime:\n  topology: web-server\n  agent_control: server\ntasks:\n  dev:\n    - yarn dev\n",
+		"vertc.taskfile.yaml":          "version: 2\nscene: voice-agent\nplatform: web\nsdk:\n  name: '@volcengine/rtc'\n  version: '4.68.1'\nruntime:\n  topology: web-server\n  agent_control: server\n  ports:\n    web: 3000\n    server: 3001\ntasks:\n  dev:\n    - yarn dev\n",
 		"server/scenes/default.json":   testScene,
 		"package.json":                 `{"scripts":{"dev":"echo dev"}}`,
 		"server/app.js":                `businessId: env.VERTC_BUSINESS_ID?.trim() || undefined; openApiUserAgent: env.VERTC_OPENAPI_USER_AGENT?.trim() || undefined; BusinessId: config.businessId; BusinessId: config.businessId; requestData.headers["User-Agent"] = config.openApiUserAgent; const signer = new Signer(requestData, config.service);`,

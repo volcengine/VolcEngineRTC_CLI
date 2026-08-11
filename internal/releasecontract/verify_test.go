@@ -119,7 +119,7 @@ func archiveFixture(t *testing.T, target Target, binary []byte, skills map[strin
 
 func verifiedFixture(t *testing.T) (Manifest, string, string, string) {
 	t.Helper()
-	root := validSkills(t, SourceSkillVersion)
+	root := validSkills(t, "1.2.3")
 	skills, err := DiscoverSkills(root)
 	if err != nil {
 		t.Fatal(err)

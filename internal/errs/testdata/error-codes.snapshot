@@ -22,6 +22,7 @@ vertc.config.write_failed
 vertc.dev.app_setup_failed
 vertc.dev.config_incomplete
 vertc.dev.interactive_required
+vertc.dev.port_in_use
 vertc.dev.selection_required
 vertc.dev.task_failed
 vertc.doctor.failed

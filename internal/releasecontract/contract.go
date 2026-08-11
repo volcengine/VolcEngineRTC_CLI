@@ -29,10 +29,8 @@ const (
 	StabilityPrerelease Stability = "prerelease"
 	StabilitySnapshot   Stability = "snapshot"
 
-	// SourceSkillVersion is a valid SemVer placeholder reserved for checked-in
-	// official Skills. Release preparation replaces it in an isolated copy.
-	SourceSkillVersion = "0.0.0-dev"
-	snapshotVersion    = "0.0.0-snapshot"
+	syntheticDevVersion = "0.0.0-dev"
+	snapshotVersion     = "0.0.0-snapshot"
 )
 
 // Destination identifies where a release may be published.
@@ -84,8 +82,7 @@ type Manifest struct {
 }
 
 // Resolve derives the canonical release identity from stability, destination,
-// and the requested version. Checked-in Skill metadata is a source placeholder
-// and is never a release-version authority.
+// and the requested version.
 func Resolve(stability Stability, destination Destination, requested string) (Identity, error) {
 	requested = strings.TrimSpace(strings.TrimPrefix(requested, "v"))
 	identity := Identity{Stability: stability, Destination: destination}
@@ -110,7 +107,7 @@ func Resolve(stability Stability, destination Destination, requested string) (Id
 		if !validPrereleaseVersion(requested) {
 			return Identity{}, fmt.Errorf("prerelease version %q must be valid X.Y.Z-prerelease SemVer", requested)
 		}
-		if requested == SourceSkillVersion || requested == snapshotVersion {
+		if requested == syntheticDevVersion || requested == snapshotVersion {
 			return Identity{}, fmt.Errorf("prerelease version %q is reserved for non-release use", requested)
 		}
 		identity.Version = requested
@@ -153,9 +150,15 @@ func validPrereleaseVersion(version string) bool {
 	return true
 }
 
+func validReleasedVersion(version string) bool {
+	if version == syntheticDevVersion || version == snapshotVersion {
+		return false
+	}
+	return stableVersion.MatchString(version) || validPrereleaseVersion(version)
+}
+
 // DiscoverSkills validates and returns every official Skill under root/skills.
-// Checked-in Skills use SourceSkillVersion; release preparation stamps only an
-// isolated copy with the requested release version.
+// All Skills must share one real checked-in stable or prerelease version.
 func DiscoverSkills(root string) ([]Skill, error) {
 	skillsDir := filepath.Join(root, "skills")
 	problems, err := skillscan.CheckSkills(skillsDir)
@@ -176,6 +179,7 @@ func DiscoverSkills(root string) ([]Skill, error) {
 	}
 	var skills []Skill
 	seen := map[string]string{}
+	baseline := ""
 	for _, entry := range entries {
 		entryPath := filepath.Join(skillsDir, entry.Name())
 		info, err := os.Lstat(entryPath)
@@ -208,8 +212,13 @@ func DiscoverSkills(root string) ([]Skill, error) {
 			return nil, fmt.Errorf("duplicate Skill name %q in %s and %s", fm.Name, previous, main)
 		}
 		seen[fm.Name] = main
-		if fm.Version != SourceSkillVersion {
-			return nil, fmt.Errorf("Skill %q checked-in version %q must use source placeholder %q", fm.Name, fm.Version, SourceSkillVersion)
+		if !validReleasedVersion(fm.Version) {
+			return nil, fmt.Errorf("Skill %q checked-in version %q must be released X.Y.Z or X.Y.Z-ID SemVer", fm.Name, fm.Version)
+		}
+		if baseline == "" {
+			baseline = fm.Version
+		} else if fm.Version != baseline {
+			return nil, fmt.Errorf("Skill %q version %q does not match baseline %q", fm.Name, fm.Version, baseline)
 		}
 		skills = append(skills, Skill{Name: fm.Name, Version: fm.Version, Path: filepath.ToSlash(filepath.Join("skills", entry.Name(), "SKILL.md"))})
 	}
@@ -278,37 +287,12 @@ func StampSkills(root, version string, skills []Skill) error {
 		if err != nil {
 			return fmt.Errorf("read %s for stamping: %w", skill.Name, err)
 		}
-		block, start, _, err := frontmatterBlock(data)
+		updated, err := renderSkillVersion(data, skill.Name, version)
 		if err != nil {
 			return fmt.Errorf("parse %s for stamping: %w", skill.Name, err)
 		}
-		lines := bytes.Split(block, []byte("\n"))
-		found := 0
-		for index, line := range lines {
-			trimmed := bytes.TrimSpace(bytes.TrimSuffix(line, []byte("\r")))
-			if bytes.HasPrefix(trimmed, []byte("version:")) {
-				found++
-				indent := line[:len(line)-len(bytes.TrimLeft(line, " \t"))]
-				ending := []byte{}
-				if bytes.HasSuffix(line, []byte("\r")) {
-					ending = []byte("\r")
-				}
-				lines[index] = append(append(append([]byte{}, indent...), []byte("version: \"")...), append([]byte(version), append([]byte("\""), ending...)...)...)
-			}
-		}
-		if found != 1 {
-			return fmt.Errorf("Skill %q must contain exactly one frontmatter version field, found %d", skill.Name, found)
-		}
-		updatedBlock := bytes.Join(lines, []byte("\n"))
-		updated := append([]byte{}, data[:start]...)
-		updated = append(updated, updatedBlock...)
-		updated = append(updated, data[start+len(block):]...)
 		if err := os.WriteFile(path, updated, 0o644); err != nil {
 			return fmt.Errorf("stamp Skill %q: %w", skill.Name, err)
-		}
-		fm, err := parseFrontmatter(updated)
-		if err != nil || fm.Version != version {
-			return fmt.Errorf("validate stamped Skill %q version: got %q: %v", skill.Name, fm.Version, err)
 		}
 	}
 	return nil

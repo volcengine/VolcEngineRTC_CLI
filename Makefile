@@ -26,7 +26,7 @@ GORELEASER         = $(shell go env GOPATH)/bin/goreleaser
 # portable public build definition.
 -include .make/ci-extra.mk
 
-.PHONY: build test test-node vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files release-tools release-snapshot release-snapshot-test toolchain-test ci ci-go e2e tools install clean
+.PHONY: build test test-node vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files prepare-release-version check-release-version release-tools release-snapshot release-snapshot-test toolchain-test ci ci-go e2e tools install clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BIN) .
@@ -70,6 +70,14 @@ check-release-files:
 	@for file in LICENSE NOTICE README.md go.mod; do \
 		test -f "$$file" || { echo "missing release file: $$file"; exit 1; }; \
 	done
+
+prepare-release-version:
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required"; exit 1; }
+	./scripts/prepare-release-version.sh --version "$(RELEASE_VERSION)"
+
+check-release-version:
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required"; exit 1; }
+	./scripts/prepare-release-version.sh --version "$(RELEASE_VERSION)" --check
 
 release-tools:
 	GOTOOLCHAIN=$(GORELEASER_GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)

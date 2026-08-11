@@ -17,9 +17,9 @@ usage() {
   cat <<'EOF'
 Usage: scripts/preflight-public-release.sh --stability stable|prerelease --version VERSION --ref REF
 
-Builds the prepared source for one exact commit, stamps the requested version,
-and validates the resulting release manifest. It writes no repository, tag,
-release, or npm state.
+Builds the prepared source for one exact commit and requires its committed
+package and Skill metadata to match the requested version. It writes no
+repository, tag, release, or npm state.
 EOF
 }
 

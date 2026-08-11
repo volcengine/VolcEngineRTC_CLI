@@ -138,11 +138,17 @@ func Prepare(options PrepareOptions) (manifest Manifest, err error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	if err = StampSkills(destination, identity.Version, preparedSkills); err != nil {
-		return Manifest{}, err
-	}
-	if err = stampPackageVersion(filepath.Join(destination, "package.json"), identity.Version); err != nil {
-		return Manifest{}, err
+	if options.Publication == DestinationPublic {
+		if err = validatePackageVersion(filepath.Join(destination, "package.json"), identity.Version); err != nil {
+			return Manifest{}, err
+		}
+	} else {
+		if err = StampSkills(destination, identity.Version, preparedSkills); err != nil {
+			return Manifest{}, err
+		}
+		if err = stampPackageVersion(filepath.Join(destination, "package.json"), identity.Version); err != nil {
+			return Manifest{}, err
+		}
 	}
 	if err = validateStampedSkills(destination, identity.Version, preparedSkills); err != nil {
 		return Manifest{}, err
@@ -187,6 +193,26 @@ func stampPackageVersion(file, version string) error {
 	updated = append(updated, '\n')
 	if err := os.WriteFile(file, updated, 0o644); err != nil {
 		return fmt.Errorf("stamp package metadata: %w", err)
+	}
+	return nil
+}
+
+func validatePackageVersion(file, version string) error {
+	data, err := os.ReadFile(file)
+	if os.IsNotExist(err) {
+		return errors.New("release source package.json is missing")
+	}
+	if err != nil {
+		return fmt.Errorf("read package metadata: %w", err)
+	}
+	var metadata struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return fmt.Errorf("parse package metadata: %w", err)
+	}
+	if metadata.Version != version {
+		return fmt.Errorf("committed package version %q does not match public release %q", metadata.Version, version)
 	}
 	return nil
 }

@@ -89,6 +89,7 @@ var Catalog = []CatalogEntry{
 	// --- dev ---
 	{"vertc.dev.config_incomplete", TypePrecondition, "Config incomplete; run doctor before dev"},
 	{"vertc.dev.app_setup_failed", TypePrecondition, "RTC application discovery or credential setup failed"},
+	{"vertc.dev.port_in_use", TypePrecondition, "A template development port is already occupied"},
 	{"vertc.dev.task_failed", TypeIO, "Template dev task exited non-zero"},
 
 	// --- conversational agent (StartVoiceChat / UpdateVoiceChat / StopVoiceChat) ---

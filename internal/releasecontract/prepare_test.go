@@ -31,8 +31,8 @@ func releaseRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	writeSkill(t, root, "byted-sample-alpha", SourceSkillVersion)
-	writeSkill(t, root, "byted-sample-beta", SourceSkillVersion)
+	writeSkill(t, root, "byted-sample-alpha", "1.2.3")
+	writeSkill(t, root, "byted-sample-beta", "1.2.3")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("committed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +61,13 @@ func fileHash(t *testing.T, path string) [32]byte {
 
 func TestPrepareDirtyWorktreeIsIsolated(t *testing.T) {
 	root := releaseRepo(t)
+	plan, err := PlanSourceVersion(root, "1.2.3-rc.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplySourceVersion(plan); err != nil {
+		t.Fatal(err)
+	}
 	skillPath := filepath.Join(root, "skills", "byted-sample-alpha", "SKILL.md")
 	beforeSkill := fileHash(t, skillPath)
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("staged\n"), 0o644); err != nil {
@@ -116,7 +123,7 @@ func TestPrepareDirtyRequiresOptIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "prepared")
-	_, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityPrerelease, Publication: DestinationPublic, Version: "1.2.3-rc.1", Source: SourceWorktree})
+	_, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic, Version: "1.2.3", Source: SourceWorktree})
 	if err == nil || !strings.Contains(err.Error(), "refusing dirty") {
 		t.Fatalf("error=%v", err)
 	}
@@ -133,11 +140,11 @@ func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(t.TempDir(), "prepared")
-	manifest, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic, Version: "v9.8.7", Source: SourceCommit, Ref: "HEAD"})
+	manifest, err := Prepare(PrepareOptions{RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic, Version: "v1.2.3", Source: SourceCommit, Ref: "HEAD"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Source != "commit" || manifest.Version != "9.8.7" {
+	if manifest.Source != "commit" || manifest.Version != "1.2.3" {
 		t.Fatalf("manifest=%+v", manifest)
 	}
 	wantCommit := strings.TrimSpace(git(t, root, "rev-parse", "HEAD"))
@@ -148,6 +155,43 @@ func TestPrepareCommitIgnoresDirtyWorktree(t *testing.T) {
 	preparedBlob := strings.TrimSpace(git(t, root, "hash-object", "--no-filters", filepath.Join(destination, "README.md")))
 	if preparedBlob != committedBlob {
 		t.Fatalf("commit export blob=%s, want %s", preparedBlob, committedBlob)
+	}
+}
+
+func TestPreparePublicPrereleaseRequiresCommittedExactVersion(t *testing.T) {
+	root := releaseRepo(t)
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{\"name\":\"@volcengine/rtc-cli\",\"version\":\"1.2.3-rc.1\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "add", "package.json")
+	git(t, root, "commit", "-qm", "prepare package prerelease")
+	destination := filepath.Join(t.TempDir(), "prepared")
+	_, err := Prepare(PrepareOptions{
+		RepoRoot: root, Destination: destination, Stability: StabilityPrerelease, Publication: DestinationPublic,
+		Version: "1.2.3-rc.1", Source: SourceCommit, Ref: "HEAD",
+	})
+	if err == nil || !strings.Contains(err.Error(), "has name/version") {
+		t.Fatalf("error=%v", err)
+	}
+	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
+		t.Fatal("destination remains after committed Skill mismatch")
+	}
+}
+
+func TestPreparePublicRequiresCommittedPackageVersion(t *testing.T) {
+	root := releaseRepo(t)
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{\"name\":\"fixture\",\"version\":\"1.2.2\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "add", "package.json")
+	git(t, root, "commit", "-qm", "mismatched package")
+	destination := filepath.Join(t.TempDir(), "prepared")
+	_, err := Prepare(PrepareOptions{
+		RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic,
+		Version: "1.2.3", Source: SourceCommit, Ref: "HEAD",
+	})
+	if err == nil || !strings.Contains(err.Error(), "committed package version") {
+		t.Fatalf("error=%v", err)
 	}
 }
 
@@ -174,8 +218,8 @@ func TestPrepareFailureCleansOwnedDestination(t *testing.T) {
 	root := releaseRepo(t)
 	destination := filepath.Join(t.TempDir(), "prepared")
 	_, err := Prepare(PrepareOptions{
-		RepoRoot: root, Destination: destination, Stability: StabilityPrerelease, Publication: DestinationPublic,
-		Version: "1.2.3-rc.1", Source: SourceWorktree,
+		RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic,
+		Version: "1.2.3", Source: SourceWorktree,
 		AfterCopyFor: func(string) error { return errors.New("injected after-copy failure") },
 	})
 	if err == nil || !strings.Contains(err.Error(), "injected") {
@@ -201,8 +245,8 @@ func TestPrepareMissingPackageMetadataCleansDestination(t *testing.T) {
 	}
 	destination := filepath.Join(t.TempDir(), "prepared")
 	_, err := Prepare(PrepareOptions{
-		RepoRoot: root, Destination: destination, Stability: StabilityPrerelease, Publication: DestinationPublic,
-		Version: "1.2.3-rc.1", Source: SourceWorktree, AllowDirty: true,
+		RepoRoot: root, Destination: destination, Stability: StabilityStable, Publication: DestinationPublic,
+		Version: "1.2.3", Source: SourceWorktree, AllowDirty: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "package.json is missing") {
 		t.Fatalf("error=%v", err)

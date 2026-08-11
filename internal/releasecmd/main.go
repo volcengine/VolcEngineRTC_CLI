@@ -15,12 +15,14 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fail("usage: releasecmd <resolve|prepare|verify|manifest-version> [options]")
+		fail("usage: releasecmd <resolve|source-version|prepare|verify|manifest-version> [options]")
 	}
 	var err error
 	switch os.Args[1] {
 	case "resolve":
 		err = resolve(os.Args[2:])
+	case "source-version":
+		err = sourceVersion(os.Args[2:])
 	case "prepare":
 		err = prepare(os.Args[2:])
 	case "verify":
@@ -33,6 +35,56 @@ func main() {
 	if err != nil {
 		fail(err.Error())
 	}
+}
+
+func sourceVersion(args []string) error {
+	flags := flag.NewFlagSet("source-version", flag.ContinueOnError)
+	repo := flags.String("repo", "", "repository worktree to inspect or update")
+	version := flags.String("version", "", "stable or prerelease source version")
+	check := flags.Bool("check", false, "require every target to already match without writing")
+	dryRun := flags.Bool("dry-run", false, "report planned updates without writing")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *repo == "" || *version == "" {
+		return fmt.Errorf("source-version requires --repo and --version")
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("source-version accepts no positional arguments")
+	}
+	if *check && *dryRun {
+		return fmt.Errorf("source-version --check and --dry-run are mutually exclusive")
+	}
+	plan, err := releasecontract.PlanSourceVersion(*repo, *version)
+	if err != nil {
+		return err
+	}
+	if *check {
+		if len(plan.Changes) != 0 {
+			paths := make([]string, 0, len(plan.Changes))
+			for _, change := range plan.Changes {
+				paths = append(paths, change.Path)
+			}
+			return fmt.Errorf("committed release version is not %s in: %v", plan.Version, paths)
+		}
+		fmt.Printf("release source version %s verified across %d files\n", plan.Version, len(plan.Targets))
+		return nil
+	}
+	if *dryRun {
+		for _, change := range plan.Changes {
+			fmt.Printf("would update %s\n", change.Path)
+		}
+		fmt.Printf("release source version %s would update %d of %d files\n", plan.Version, len(plan.Changes), len(plan.Targets))
+		return nil
+	}
+	if err := releasecontract.ApplySourceVersion(plan); err != nil {
+		return err
+	}
+	for _, change := range plan.Changes {
+		fmt.Printf("updated %s\n", change.Path)
+	}
+	fmt.Printf("release source version %s prepared across %d files\n", plan.Version, len(plan.Targets))
+	return nil
 }
 
 func resolve(args []string) error {

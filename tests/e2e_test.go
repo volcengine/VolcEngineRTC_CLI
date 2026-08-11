@@ -107,7 +107,7 @@ func remoteVoiceAgentArchive() ([]byte, error) {
 		"server/package.json":          `{"scripts":{"dev":"node app.js"}}`,
 		"server/app.js":                "businessId: env.VERTC_BUSINESS_ID?.trim() || undefined;\nopenApiUserAgent: env.VERTC_OPENAPI_USER_AGENT?.trim() || undefined;\nBusinessId: config.businessId,\nBusinessId: config.businessId,\nrequestData.headers[\"User-Agent\"] = config.openApiUserAgent;\nconst signer = new Signer(requestData, config.service);\n",
 		"server/scenes/default.json":   `{"SceneConfig":{"Name":"Default"},"VoiceChat":{"Config":{"ASRConfig":{"Provider":"volcano","ProviderParams":{}},"LLMConfig":{"Mode":"ArkV3","EndPointId":"ep-test"},"TTSConfig":{"Provider":"volcano","ProviderParams":{}}},"AgentConfig":{"UserId":"voice_agent","EnableConversationStateCallback":true}}}`,
-		"vertc.taskfile.yaml":          "version: 2\nscene: voice-agent\nplatform: web\nsdk:\n  name: '@volcengine/rtc'\n  version: '4.68.1'\nruntime:\n  topology: web-server\n  agent_control: server\ntasks:\n  dev:\n    - yarn dev\n",
+		"vertc.taskfile.yaml":          "version: 2\nscene: voice-agent\nplatform: web\nsdk:\n  name: '@volcengine/rtc'\n  version: '4.68.1'\nruntime:\n  topology: web-server\n  agent_control: server\n  ports:\n    web: 3000\n    server: 3001\ntasks:\n  dev:\n    - yarn dev\n",
 		"vertc.template.yaml":          "version: 1\nscene: voice-agent\nplatform: web\nagent_config: server/scenes/default.json\nrequired_files:\n  - package.json\n  - web/package.json\n  - web/src/App.tsx\n  - server/package.json\n  - server/app.js\n  - server/scenes/default.json\n  - vertc.taskfile.yaml\n",
 	}
 	var out bytes.Buffer

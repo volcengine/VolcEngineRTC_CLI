@@ -63,6 +63,23 @@ Repeat `--bot-id` to select multiple bots. Run `vertc dev --reconfigure` to
 select the RTC application and bot scenes again. Existing bot scene files are
 preserved.
 
+Before installing dependencies, `dev` checks the local ports declared by the
+template. A web-server taskfile can declare them explicitly:
+
+```yaml
+runtime:
+  ports:
+    web: 3000
+    server: 3001
+```
+
+Use `--web-port` and `--server-port` to override those values, or `--auto-port`
+to replace only occupied ports. The resolved values are passed to template
+tasks as `VERTC_WEB_PORT` and `VERTC_SERVER_PORT`, and stdout reports `ports`
+and `urls` before the long-running task starts. A conflict reports the listener
+PID, process name, and working directory when the operating system exposes
+them. `vertc` never terminates the listener.
+
 Interactive `vertc dev` is recommended because it retrieves and writes AppKey
 without exposing it as a process argument. If Console discovery is unavailable,
 use a local editor or secret-management workflow to write the following directly

@@ -62,6 +62,7 @@ See [Voice-agent projects](./docs/voice-agent.md) for the generated layout, runt
 
 - **Create and run projects** — `init` creates a project from a pinned official template. `dev` configures Console resources and starts the web app and local server.
 - **Diagnose problems** — `doctor` reports PASS/WARN/SKIP/UNKNOWN/FAIL checks; `explain-error` looks up SDK and conversational-AI errors offline.
+- **Read RTC documentation** — `docs search/fetch/list` queries the live, read-only documentation endpoint without project configuration or signin.
 - **Use it from agents and scripts** — pipes and redirected output default to JSON, stdout contains data only, and failures return a stable `error.code`. Side-effecting commands support `--dry-run`.
 - **Keep configuration and credentials separate** — project metadata, runtime secrets, scene data, and Signin credentials use separate storage.
 
@@ -74,6 +75,7 @@ See [Voice-agent projects](./docs/voice-agent.md) for the generated layout, runt
 | `dev [--web-port N] [--server-port N] [--auto-port]` | Configure RTC resources, check ports, and run the project |
 | `doctor [cli\|project]` | Check CLI and project readiness without changing the project |
 | `explain-error <code>` | Look up SDK and conversational-AI errors offline |
+| `docs search/fetch/list` | Search, fetch, or browse RTC documentation |
 | `skills list/read/sync` | Inspect or synchronize the official Skill embedded in the current release |
 | `update [--check\|--force]` | Check or update an npm-managed installation |
 

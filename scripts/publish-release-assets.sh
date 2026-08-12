@@ -35,10 +35,17 @@ normalized_notes() {
   jq -Rs 'gsub("\r\n"; "\n") | sub("\n+$"; "")' "$1"
 }
 
+npm_view() {
+  npm view "$@" --json \
+    --cache "$npm_cache" \
+    --registry "$npm_registry" \
+    --prefer-online
+}
+
 npm_view_optional() {
   local output_file="$1" error_file="$2"
   shift 2
-  if npm view "$@" --json > "$output_file" 2> "$error_file"; then
+  if npm_view "$@" > "$output_file" 2> "$error_file"; then
     return 0
   fi
   if grep -Eq '(^|[[:space:]])E404([[:space:]]|$)|404 Not Found' "$error_file"; then
@@ -47,6 +54,27 @@ npm_view_optional() {
   fi
   [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
   die "npm registry lookup failed for $*"
+}
+
+npm_view_with_retry() {
+  local output_file="$1" error_file="$2" delay
+  shift 2
+  local -a retry_delays=(0 5 10 20 40 80)
+  for delay in "${retry_delays[@]}"; do
+    if (( delay > 0 )); then
+      echo "publish-release-assets: npm registry still returns E404; retrying in ${delay}s" >&2
+      sleep "$delay"
+    fi
+    if npm_view "$@" > "$output_file" 2> "$error_file"; then
+      return 0
+    fi
+    if ! grep -Eq '(^|[[:space:]])E404([[:space:]]|$)|404 Not Found' "$error_file"; then
+      [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
+      die "npm registry lookup failed for $*"
+    fi
+  done
+  [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
+  die "npm package remained unavailable after publish for $*"
 }
 
 semver_compare() {
@@ -111,7 +139,7 @@ done
 [[ "$prerelease" == "true" || "$prerelease" == "false" ]] || die "--prerelease must be true or false"
 [[ "$latest" == "true" || "$latest" == "false" ]] || die "--latest must be true or false"
 [[ "$prerelease" != "true" || "$latest" == "false" ]] || die "GitHub prereleases cannot be Latest"
-for command_name in git gh npm jq shasum cmp find grep sed; do
+for command_name in git gh npm jq shasum cmp find grep sed sleep; do
   command -v "$command_name" >/dev/null 2>&1 || die "missing required command: $command_name"
 done
 
@@ -132,6 +160,8 @@ done < <(find "$artifacts" -maxdepth 1 -type f \
 
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "$tmp_root"' EXIT
+npm_cache="$tmp_root/npm-cache"
+npm_registry="https://registry.npmjs.org"
 pack_json="$tmp_root/npm-pack.json"
 npm pack "$npm_root" --json --pack-destination "$tmp_root" > "$pack_json"
 local_shasum="$(jq -er '.[0].shasum' "$pack_json")"
@@ -195,34 +225,55 @@ else
   echo "publish-release-assets: verified existing GitHub Release $tag"
 fi
 
-latest_json="$tmp_root/npm-latest.json"
-npm_view_optional "$latest_json" "$tmp_root/npm-latest.error" "$package_name" "dist-tags.$npm_tag"
-observed_tag="$(jq -r 'select(type == "string" and length > 0)' "$latest_json")"
+selected_tag_json="$tmp_root/npm-selected-tag.json"
+npm_view_optional "$selected_tag_json" "$tmp_root/npm-selected-tag.error" "$package_name@$npm_tag" version
+observed_tag="$(jq -r 'select(type == "string" and length > 0)' "$selected_tag_json")"
 if [[ -n "$observed_tag" && "$observed_tag" != "$version" ]]; then
   channel_order="$(semver_compare "$version" "$observed_tag")"
   [[ "$channel_order" != "-1" ]] || die "refusing to move npm $npm_tag backward from $observed_tag to $version"
 fi
+latest_before_json="$tmp_root/npm-latest-before.json"
+npm_view_optional "$latest_before_json" "$tmp_root/npm-latest-before.error" "$package_name" "dist-tags.latest"
+latest_before="$(jq -r 'select(type == "string" and length > 0)' "$latest_before_json")"
 
 npm_version_json="$tmp_root/npm-version.json"
 npm_view_optional "$npm_version_json" "$tmp_root/npm-version.error" "$package_name@$version" version
 remote_version="$(jq -r 'select(type == "string")' "$npm_version_json")"
+published_now=0
 if [[ -n "$remote_version" ]]; then
   [[ "$remote_version" == "$version" ]] || die "npm returned conflicting version $remote_version"
-  remote_shasum="$(npm view "$package_name@$version" dist.shasum --json | jq -er '.')"
+  remote_shasum_json="$tmp_root/npm-shasum.json"
+  npm_view "$package_name@$version" dist.shasum > "$remote_shasum_json"
+  remote_shasum="$(jq -er '.' "$remote_shasum_json")"
   [[ "$remote_shasum" == "$local_shasum" ]] || die "existing npm package content conflicts for $package_name@$version"
   echo "publish-release-assets: verified existing npm package $package_name@$version"
 else
-  npm publish "$npm_tarball" --access public --tag "$npm_tag"
-  remote_shasum="$(npm view "$package_name@$version" dist.shasum --json | jq -er '.')"
+  npm publish "$npm_tarball" --access public --tag "$npm_tag" --registry "$npm_registry"
+  published_now=1
+  npm_cache="$tmp_root/npm-cache-post-publish"
+  remote_shasum_json="$tmp_root/npm-shasum.json"
+  npm_view_with_retry "$remote_shasum_json" "$tmp_root/npm-shasum.error" "$package_name@$version" dist.shasum
+  remote_shasum="$(jq -er '.' "$remote_shasum_json")"
   [[ "$remote_shasum" == "$local_shasum" ]] || die "published npm package shasum verification failed"
 fi
 
-observed_tag="$(npm view "$package_name" "dist-tags.$npm_tag" --json | jq -er '.')"
+selected_tag_json="$tmp_root/npm-selected-tag-final.json"
+if [[ "$published_now" -eq 1 ]]; then
+  npm_view_with_retry "$selected_tag_json" "$tmp_root/npm-selected-tag-final.error" "$package_name@$npm_tag" version
+else
+  npm_view_optional "$selected_tag_json" "$tmp_root/npm-selected-tag-final.error" "$package_name@$npm_tag" version
+fi
+observed_tag="$(jq -r 'select(type == "string" and length > 0)' "$selected_tag_json")"
 if [[ "$observed_tag" != "$version" ]]; then
-  npm dist-tag add "$package_name@$version" "$npm_tag"
-  observed_tag="$(npm view "$package_name" "dist-tags.$npm_tag" --json | jq -er '.')"
+  npm dist-tag add "$package_name@$version" "$npm_tag" --registry "$npm_registry"
+  npm_view_with_retry "$selected_tag_json" "$tmp_root/npm-selected-tag-final.error" "$package_name@$npm_tag" version
+  observed_tag="$(jq -er '.' "$selected_tag_json")"
 fi
 [[ "$observed_tag" == "$version" ]] || die "npm $npm_tag dist-tag does not resolve to $version"
+latest_after_json="$tmp_root/npm-latest-after.json"
+npm_view "$package_name" "dist-tags.latest" > "$latest_after_json"
+latest_after="$(jq -r 'select(type == "string" and length > 0)' "$latest_after_json")"
+echo "publish-release-assets: npm latest: ${latest_before:-<unset>} -> ${latest_after:-<unset>}"
 
 if [[ "$release_complete" -eq 0 ]]; then
   edit_args=(release edit "$tag" --draft=false "--prerelease=$prerelease" "--latest=$latest")

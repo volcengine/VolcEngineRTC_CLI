@@ -68,18 +68,20 @@ func TestMain(m *testing.M) {
 			"expires_in":    3600,
 		})
 	}))
+	topicDocsServer := httptest.NewServer(http.HandlerFunc(serveTopicDocsFixture))
 	if err := os.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache")); err != nil {
 		panic("set template cache: " + err.Error())
 	}
 	// Build from the module root (parent of this tests/ dir).
 	linkerFlags := fmt.Sprintf(
-		"-X github.com/volcengine/VolcEngineRTC_CLI/internal/template.voiceAgentRemoteURL=%s -X github.com/volcengine/VolcEngineRTC_CLI/internal/template.voiceAgentRemoteSHA256=%x -X github.com/volcengine/VolcEngineRTC_CLI/cmd.oauthAuthorizeEndpoint=%s/authorize -X github.com/volcengine/VolcEngineRTC_CLI/cmd.oauthTokenEndpoint=%s/token",
+		"-X github.com/volcengine/VolcEngineRTC_CLI/internal/template.voiceAgentRemoteURL=%s -X github.com/volcengine/VolcEngineRTC_CLI/internal/template.voiceAgentRemoteSHA256=%x -X github.com/volcengine/VolcEngineRTC_CLI/cmd.oauthAuthorizeEndpoint=%s/authorize -X github.com/volcengine/VolcEngineRTC_CLI/cmd.oauthTokenEndpoint=%s/token -X github.com/volcengine/VolcEngineRTC_CLI/internal/topicdocs.e2eEndpoint=%s",
 		templateServer.URL,
 		archiveSHA256,
 		oauthServer.URL,
 		oauthServer.URL,
+		topicDocsServer.URL,
 	)
-	cmd := exec.Command("go", "build", "-ldflags", linkerFlags, "-o", binPath, ".")
+	cmd := exec.Command("go", "build", "-tags", "topicdocs_e2e", "-ldflags", linkerFlags, "-o", binPath, ".")
 	cmd.Dir = ".."
 	if out, err := cmd.CombinedOutput(); err != nil {
 		panic("build vertc: " + err.Error() + "\n" + string(out))
@@ -92,8 +94,73 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	templateServer.Close()
 	oauthServer.Close()
+	topicDocsServer.Close()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+func serveTopicDocsFixture(w http.ResponseWriter, r *http.Request) {
+	if r.UserAgent() != "vertc/0.0.1-dev" {
+		http.Error(w, "unexpected user agent", http.StatusForbidden)
+		return
+	}
+	if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" || r.Header.Get("X-App-Key") != "" {
+		http.Error(w, "forwarded credential", http.StatusBadRequest)
+		return
+	}
+	var request struct {
+		ID     int64  `json:"id"`
+		Method string `json:"method"`
+		Params struct {
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments"`
+		} `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "malformed request", http.StatusBadRequest)
+		return
+	}
+	if request.Method == "notifications/initialized" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var result any
+	switch request.Method {
+	case "initialize":
+		result = map[string]any{
+			"protocolVersion": "2025-03-26",
+			"serverInfo":      map[string]string{"name": "e2e-topic-docs", "version": "1.0.0"},
+		}
+	case "tools/list":
+		result = map[string]any{"tools": []any{
+			map[string]any{"name": "search_docs", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]string{"type": "string"}}, "additionalProperties": false}},
+			map[string]any{"name": "fetch_doc", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]string{"type": "string"}}, "additionalProperties": false}},
+			map[string]any{"name": "list_docs", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}},
+		}}
+	case "tools/call":
+		text := ""
+		isError := false
+		switch request.Params.Name {
+		case "search_docs":
+			if request.Params.Arguments["query"] == "force-error" {
+				text, isError = "fixture failure", true
+			} else {
+				text = `[{"id":"rtc/audio","score":0.95,"highlight":{"title":["<hl>Audio</hl> Guide"]}},{"id":"rtc/video","score":0.75,"highlight":{"content":["Video <hl>publish</hl>"]}}]`
+			}
+		case "fetch_doc":
+			text = "# Fixture RTC Document\n\nExact markdown.  \n"
+		case "list_docs":
+			text = "- [Audio Guide](rtc/audio): Publish audio\n- [Video Guide](rtc/video): Publish video\n"
+		default:
+			text, isError = "unknown fixture tool", true
+		}
+		result = map[string]any{"content": []any{map[string]string{"type": "text", "text": text}}, "isError": isError}
+	default:
+		http.Error(w, "unexpected method", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
 }
 
 func remoteVoiceAgentArchive() ([]byte, error) {

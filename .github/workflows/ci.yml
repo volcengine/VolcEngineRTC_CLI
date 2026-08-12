@@ -54,16 +54,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Run Windows tests and build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/ci-windows.ps1
       - name: Run tests
+        if: runner.os != 'Windows'
         run: go test -count=1 ./...
       - name: Build CLI
+        if: runner.os != 'Windows'
         shell: bash
         run: |
-          ext=""
-          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
-          go build -trimpath -o "vertc${ext}" .
-          "./vertc${ext}" version
-          "./vertc${ext}" --help >/dev/null
+          go build -trimpath -o vertc .
+          ./vertc version
+          ./vertc --help >/dev/null
 
   template-build:
     name: Build generated web templates

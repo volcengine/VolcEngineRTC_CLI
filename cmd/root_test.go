@@ -80,7 +80,7 @@ func TestRootCommandSurface(t *testing.T) {
 	sort.Strings(hidden)
 
 	wantVisible := []string{
-		"auth", "dev", "doctor", "explain-error",
+		"auth", "dev", "docs", "doctor", "explain-error",
 		"help", "init", "skills", "update", "version",
 	}
 	wantHidden := []string{"agent", "completion", "config", "env", "openapi", "token"}
@@ -91,6 +91,17 @@ func TestRootCommandSurface(t *testing.T) {
 	}
 	if !equalStringSlice(hidden, wantHidden) {
 		t.Errorf("hidden command set drifted:\n got:  %v\n want: %v", hidden, wantHidden)
+	}
+}
+
+func TestDocsCommandsAreProjectIndependent(t *testing.T) {
+	root := NewRootCmd()
+	docs, _, err := root.Find([]string{"docs", "search"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isProjectIndependentCommand(docs) {
+		t.Fatal("docs search must not load project config or .env.local")
 	}
 }
 

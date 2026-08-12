@@ -66,10 +66,15 @@ func NewRootCmd() *cobra.Command {
 		DisableAutoGenTag: true,
 		Version:           meta.Version,
 		// Load the project's .env.local before project commands resolve ${ENV}, so
-		// the CLI reads the same file the web runtime does. Auth and init are
-		// intentionally project-independent and never inspect the current dotenv.
+		// the CLI reads the same file the web runtime does. Auth, init and docs
+		// are project-independent and never inspect the current dotenv.
 		PersistentPreRunE: func(c *cobra.Command, args []string) error {
-			if c.Name() == "init" || c.Name() == "auth" || (c.Parent() != nil && c.Parent().Name() == "auth") {
+			if flagFormat != "" {
+				if _, err := output.ParseFormat(flagFormat); err != nil {
+					return err
+				}
+			}
+			if isProjectIndependentCommand(c) {
 				return nil
 			}
 			_, err := env.LoadIntoProcess(".")
@@ -110,8 +115,19 @@ func NewRootCmd() *cobra.Command {
 		newDevCmd(),
 		newUpdateCmd(),
 		newSkillsCmd(),
+		newDocsCmd(),
 	)
 	return root
+}
+
+func isProjectIndependentCommand(c *cobra.Command) bool {
+	for current := c; current != nil; current = current.Parent() {
+		switch current.Name() {
+		case "auth", "init", "docs":
+			return true
+		}
+	}
+	return false
 }
 
 // Execute runs the CLI and returns the process exit code.

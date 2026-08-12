@@ -62,6 +62,7 @@ vertc dev
 
 - **创建和运行项目**：`init` 使用固定版本的官方模板创建项目；`dev` 配置控制台资源并启动 Web 应用和本地服务。
 - **排查问题**：`doctor` 给出 PASS/WARN/SKIP/UNKNOWN/FAIL 检查结果；`explain-error` 可离线查询 SDK 与对话式 AI 错误码。
+- **查询 RTC 文档**：`docs search/fetch/list` 通过内置只读文档端点查询实时内容，无需项目配置或登录。
 - **供 Agent 和脚本调用**：管道和重定向默认输出 JSON；stdout 只写数据；失败时返回稳定的 `error.code`。有副作用的命令支持 `--dry-run`。
 - **分开保存配置和凭据**：项目元数据、运行时密钥、场景数据和登录凭据各自存放。
 
@@ -74,6 +75,7 @@ vertc dev
 | `dev [--web-port N] [--server-port N] [--auto-port]` | 配置 RTC 资源、检查端口并运行项目         |
 | `doctor [cli\|project]`                            | 检查 CLI 和项目是否就绪，不修改项目        |
 | `explain-error <code>`                             | 离线查询 SDK 与对话式 AI 错误码        |
+| `docs search/fetch/list`                           | 搜索、读取或浏览 RTC 文档             |
 | `skills list/read/sync`                            | 查看或同步当前 Release 内嵌的官方 Skill |
 | `update [--check\|--force]`                        | 检查或更新 npm 管理的安装             |
 

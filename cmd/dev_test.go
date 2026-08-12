@@ -754,7 +754,7 @@ func TestDevRejectsOccupiedPortBeforeInstall(t *testing.T) {
 	t.Cleanup(func() { _ = listener.Close() })
 	port := listener.Addr().(*net.TCPAddr).Port
 
-	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(port) + "\ntasks:\n  install:\n    - 'touch install-ran'\n  dev:\n    - 'touch dev-ran'\n"
+	taskfile := "version: 2\nscene: test-scene\nplatform: web\nruntime:\n  ports:\n    web: " + strconv.Itoa(port) + "\ntasks:\n  install:\n    - 'go run task-fixture.go install-ran'\n  dev:\n    - 'go run task-fixture.go dev-ran'\n"
 	dir := setupDevPortProject(t, taskfile)
 	binDir := filepath.Join(dir, "bin")
 	if err := os.Mkdir(binDir, 0o755); err != nil {

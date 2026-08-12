@@ -109,14 +109,27 @@ set -euo pipefail
 case "$1" in
   pack) exec "$REAL_NPM" "$@" ;;
   view)
+    printf '%s\n' "$*" >> "$TEST_STATE/npm-view.log"
     spec="$2"; field="$3"
     case "$field" in
       version)
-        [[ -f "$TEST_STATE/npm.shasum" ]] || { echo 'npm error code E404' >&2; exit 1; }
-        printf '"%s"\n' "$TEST_VERSION"
+        requested="${spec##*@}"
+        if [[ "$requested" == "$TEST_VERSION" && -f "$TEST_STATE/npm.shasum" ]]; then
+          printf '"%s"\n' "$TEST_VERSION"
+        elif [[ -f "$TEST_STATE/npm.$requested" ]]; then
+          jq -Rn --arg value "$(cat "$TEST_STATE/npm.$requested")" '$value'
+        else
+          echo 'npm error code E404' >&2
+          exit 1
+        fi
         ;;
       dist.shasum)
         [[ -f "$TEST_STATE/npm.shasum" ]] || exit 1
+        if [[ "${SIMULATE_NPM_E404_ONCE:-0}" == 1 && ! -f "$TEST_STATE/npm-e404-observed" ]]; then
+          : > "$TEST_STATE/npm-e404-observed"
+          echo 'npm error code E404' >&2
+          exit 1
+        fi
         jq -Rn --arg value "$(cat "$TEST_STATE/npm.shasum")" '$value'
         ;;
       dist-tags.*)
@@ -151,7 +164,11 @@ case "$1" in
   *) echo "unexpected npm command: $*" >&2; exit 2 ;;
 esac
 EOF
-chmod +x "$fakebin/gh" "$fakebin/npm"
+cat > "$fakebin/sleep" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$TEST_STATE/npm-sleep.log"
+EOF
+chmod +x "$fakebin/gh" "$fakebin/npm" "$fakebin/sleep"
 
 export PATH="$fakebin:$PATH"
 export TEST_STATE="$state"
@@ -161,7 +178,6 @@ if [[ -z "${REAL_NPM:-}" ]]; then
   # PATH now resolves the fake npm; locate the real executable explicitly.
   export REAL_NPM="$(PATH="${PATH#*:}" command -v npm)"
 fi
-printf '0.0.0\n' > "$state/npm.latest"
 publish=("$repo_root/scripts/publish-release-assets.sh" --tag v0.0.1-rc.1 --target "$target" --artifacts "$artifacts" --npm-root "$npm_root" --notes-file "$notes" --prerelease true --latest false --npm-tag next)
 
 if (cd "$fixture" && "${publish[@]:0:${#publish[@]}-4}" --prerelease true --latest true --npm-tag next) >/dev/null 2>&1; then
@@ -211,17 +227,23 @@ fi
 jq '.name="vertc 0.0.1-rc.1"' "$state/release.json" > "$state/release.tmp"
 mv "$state/release.tmp" "$state/release.json"
 
-# A draft left with only some uploaded assets is completed in place.
+# A draft left with only some uploaded assets is completed in place. The first
+# post-publish E404 is retried with the configured backoff and isolated cache.
 missing_asset="vertc_0.0.1-rc.1_windows_arm64.zip"
 rm "$state/assets/$missing_asset"
 jq --arg name "$missing_asset" '.assets |= map(select(.name != $name))' "$state/release.json" > "$state/release.tmp"
 mv "$state/release.tmp" "$state/release.json"
-(cd "$fixture" && "${publish[@]}") >/dev/null
+(cd "$fixture" && SIMULATE_NPM_E404_ONCE=1 "${publish[@]}") > "$state/publish.output"
+[[ "$(cat "$state/npm-sleep.log")" == 5 ]]
+grep -Fq 'publish-release-assets: npm latest: <unset> -> <unset>' "$state/publish.output"
+grep -Fq -- '--registry https://registry.npmjs.org' "$state/npm-view.log"
+grep -Fq -- '--prefer-online' "$state/npm-view.log"
+grep -Fq -- '--cache ' "$state/npm-view.log"
 [[ "$(jq -r '.isDraft' "$state/release.json")" == false ]]
 [[ "$(jq -r '.isPrerelease' "$state/release.json")" == true ]]
 grep -Fq -- '--latest=false' "$state/gh.log"
 [[ "$(cat "$state/npm.next")" == 0.0.1-rc.1 ]]
-[[ "$(cat "$state/npm.latest")" == 0.0.0 ]]
+[[ ! -e "$state/npm.latest" ]]
 [[ "$(grep -c '^create$' "$state/gh.log")" -eq 1 ]]
 [[ "$(grep -c '^upload$' "$state/gh.log")" -eq 1 ]]
 
@@ -230,6 +252,16 @@ grep -Fq -- '--latest=false' "$state/gh.log"
 [[ "$(grep -c '^create$' "$state/gh.log")" -eq 1 ]]
 [[ "$(grep -c '^publish$' "$state/npm.log")" -eq 1 ]]
 
+# A retry repairs a missing channel tag when the immutable package version
+# already exists, without attempting to publish the version again.
+jq '.isDraft=true' "$state/release.json" > "$state/release.tmp"
+mv "$state/release.tmp" "$state/release.json"
+rm "$state/npm.next"
+(cd "$fixture" && "${publish[@]}") >/dev/null
+[[ "$(cat "$state/npm.next")" == "$TEST_VERSION" ]]
+[[ "$(grep -c '^publish$' "$state/npm.log")" -eq 1 ]]
+[[ "$(jq -r '.isDraft' "$state/release.json")" == false ]]
+
 # Rerunning an older workflow must never roll the selected npm channel backward.
 printf '0.0.2\n' > "$state/npm.next"
 if (cd "$fixture" && "${publish[@]}") >/dev/null 2>&1; then
@@ -237,7 +269,7 @@ if (cd "$fixture" && "${publish[@]}") >/dev/null 2>&1; then
   exit 1
 fi
 [[ "$(cat "$state/npm.next")" == 0.0.2 ]]
-[[ "$(cat "$state/npm.latest")" == 0.0.0 ]]
+[[ ! -e "$state/npm.latest" ]]
 printf '%s\n' "$TEST_VERSION" > "$state/npm.next"
 
 # Conflicting npm content leaves the GitHub Release safely in draft state.

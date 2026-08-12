@@ -21,6 +21,34 @@ normalized_notes() {
   jq -Rs 'gsub("\r\n"; "\n") | sub("\n+$"; "")' "$1"
 }
 
+npm_view() {
+  npm view "$@" --json \
+    --cache "$npm_cache" \
+    --registry "$npm_registry" \
+    --prefer-online
+}
+
+npm_view_with_retry() {
+  local output_file="$1" error_file="$2" delay
+  shift 2
+  local -a retry_delays=(0 5 10 20 40 80)
+  for delay in "${retry_delays[@]}"; do
+    if (( delay > 0 )); then
+      echo "verify-release-publication: npm registry returns E404; retrying in ${delay}s" >&2
+      sleep "$delay"
+    fi
+    if npm_view "$@" > "$output_file" 2> "$error_file"; then
+      return 0
+    fi
+    if ! grep -Eq '(^|[[:space:]])E404([[:space:]]|$)|404 Not Found' "$error_file"; then
+      [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
+      die "npm registry lookup failed for $*"
+    fi
+  done
+  [[ ! -s "$error_file" ]] || sed -n '1,20p' "$error_file" >&2
+  die "npm package remained unavailable for $*"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repository) repository="$2"; shift 2 ;;
@@ -41,7 +69,7 @@ done
 [[ "$prerelease" == "true" || "$prerelease" == "false" ]] || die "--prerelease must be true or false"
 [[ "$latest" == "true" || "$latest" == "false" ]] || die "--latest must be true or false"
 [[ "$prerelease" != "true" || "$latest" == "false" ]] || die "GitHub prereleases cannot be Latest"
-for command_name in gh npm jq shasum tar unzip grep find awk; do
+for command_name in gh npm jq shasum tar unzip grep find awk sed sleep; do
   command -v "$command_name" >/dev/null 2>&1 || die "missing required command: $command_name"
 done
 
@@ -117,6 +145,8 @@ if [[ -n "$run_id" ]]; then
   [[ "$(jq -r '.event' <<< "$run_json")" == "push" ]] || die "workflow run was not tag-triggered"
 fi
 
+npm_cache="$tmp_root/npm-cache"
+npm_registry="https://registry.npmjs.org"
 release_json="$tmp_root/release.json"
 gh release view "$tag" --repo "$repository" --json tagName,name,body,isDraft,isPrerelease,targetCommitish,assets > "$release_json"
 [[ "$(jq -r '.isDraft' "$release_json")" == "false" ]] || die "release is still a draft"
@@ -160,6 +190,10 @@ for archive in "${archives[@]}"; do
   esac
 done
 
-[[ "$(npm view "$package_name@$version" version --json | jq -er '.')" == "$version" ]] || die "npm version is missing"
-[[ "$(npm view "$package_name" "dist-tags.$npm_tag" --json | jq -er '.')" == "$version" ]] || die "npm $npm_tag does not resolve to $version"
+npm_version_json="$tmp_root/npm-version.json"
+npm_view_with_retry "$npm_version_json" "$tmp_root/npm-version.error" "$package_name@$version" version
+[[ "$(jq -er '.' "$npm_version_json")" == "$version" ]] || die "npm version is missing"
+npm_tag_json="$tmp_root/npm-tag.json"
+npm_view_with_retry "$npm_tag_json" "$tmp_root/npm-tag.error" "$package_name@$npm_tag" version
+[[ "$(jq -er '.' "$npm_tag_json")" == "$version" ]] || die "npm $npm_tag does not resolve to $version"
 echo "verify-release-publication: complete tag=$tag target=$target assets=7 npm=$package_name@$version npm_tag=$npm_tag prerelease=$prerelease latest=$latest"

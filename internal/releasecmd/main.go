@@ -67,6 +67,9 @@ func sourceVersion(args []string) error {
 			}
 			return fmt.Errorf("committed release version is not %s in: %v", plan.Version, paths)
 		}
+		if err := releasecontract.ValidateReleaseChangelog(plan.Root, plan.Version); err != nil {
+			return err
+		}
 		fmt.Printf("release source version %s verified across %d files\n", plan.Version, len(plan.Targets))
 		return nil
 	}

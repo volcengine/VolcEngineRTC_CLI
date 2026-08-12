@@ -86,6 +86,21 @@ var Catalog = []CatalogEntry{
 	{"vertc.openapi.request_failed", TypeIO, "OpenAPI transport/HTTP call failed"},
 	{"vertc.openapi.sign_failed", TypeValidation, "OpenAPI request signing failed"},
 
+	// --- Topic RTC documentation MCP ---
+	{"vertc.docs.invalid_argument", TypeValidation, "Documentation command argument or local paging value is invalid"},
+	{"vertc.docs.request_failed", TypeIO, "RTC documentation transport request failed"},
+	{"vertc.docs.timeout", TypeIO, "RTC documentation lifecycle or tool call timed out"},
+	{"vertc.docs.http_error", TypePrecondition, "RTC documentation service returned an unexpected HTTP status"},
+	{"vertc.docs.rate_limited", TypePrecondition, "RTC documentation service rate limit was exceeded"},
+	{"vertc.docs.unauthorized", TypeAuth, "RTC documentation service rejected authorization"},
+	{"vertc.docs.unsupported_protocol", TypePrecondition, "RTC documentation MCP negotiated an unsupported protocol version"},
+	{"vertc.docs.tool_unavailable", TypePrecondition, "Required RTC documentation tool is unavailable"},
+	{"vertc.docs.tool_schema_changed", TypePrecondition, "RTC documentation tool schema is incompatible"},
+	{"vertc.docs.protocol_error", TypeIO, "RTC documentation MCP response or nested payload violates the expected contract"},
+	{"vertc.docs.tool_error", TypePrecondition, "RTC documentation tool returned an application error"},
+	{"vertc.docs.document_not_found", TypeNotFound, "Requested RTC documentation document was not found"},
+	{"vertc.docs.response_too_large", TypePrecondition, "Decoded RTC documentation response exceeded the safety limit"},
+
 	// --- dev ---
 	{"vertc.dev.config_incomplete", TypePrecondition, "Config incomplete; run doctor before dev"},
 	{"vertc.dev.app_setup_failed", TypePrecondition, "RTC application discovery or credential setup failed"},

@@ -1,7 +1,7 @@
 ---
 name: byted-interactai-guide
 description: 解释火山 AI 音视频互动的产品能力、适用边界与最新官方文档；并帮助用户搭建、运行和分阶段排查最小 InteractAI VoiceChat Web Demo。用户询问产品支持情况、能力清单、接入方案或运行故障时使用。
-version: "0.0.4"
+version: "0.0.5"
 ---
 
 # InteractAI Guide — 能力、接入与排障薄路由
@@ -78,6 +78,7 @@ vertc dev
 | 用户意图 / 症状 | 运行阶段 | 路由 |
 |------------------|----------|------|
 | 产品能力概览 / 是否支持 / 最新能力 | 咨询 | `references/capabilities.md`（快变事实查当前官方文档） |
+| RTC 文档搜索 / 精确正文核验 | 咨询 | `references/documentation-retrieval.md`（search → fetch） |
 | VoiceChat API 字段 / 调用方式 | 配置 | `references/voicechat-api.md`（官方链接优先）|
 | 进房失败 / 无媒体 / 有声但播不出 | 进房·采集·发布·播放 | `references/web-sdk-diagnosis.md` |
 | Agent 未进房 / 无字幕 / ASR·LLM·TTS 异常 | StartVoiceChat 之后 | `references/voice-agent-runtime.md` |
@@ -86,6 +87,9 @@ vertc dev
 
 用 `vertc skills read byted-interactai-guide/references/integration-flow.md` 可直接读取任一
 reference。
+
+咨询涉及当前 RTC 文档时，先按 `references/documentation-retrieval.md` 使用公开只读
+命令检索并获取原文；不要把搜索摘要当正文，也不要在服务不可用时静默改用过期资料。
 
 ## 能力回答边界
 
@@ -116,6 +120,8 @@ verification）给出结论。完整分阶段路由见 `references/integration-f
   `domain`（`web-sdk`/`voice-agent`）、`source` 与 `verified` 可信状态。VoiceChat 运行态与
   OpenAPI 公共码已对官方「事件和错误码」「公共错误码」核验（`verified`）；无逐项公开来源的
   登录凭证与签名排障条目标为 `curated-seed`，会显式提示以官方为准，勿当确定事实。
+- `vertc docs search/fetch/list`：只读查询 RTC 文档，无需项目或登录；先搜索得到精确
+  `doc-id`，再 fetch 原文核验。离线回退规则见 `references/documentation-retrieval.md`。
 
 ## 安全边界与提醒
 
@@ -136,7 +142,7 @@ verification）给出结论。完整分阶段路由见 `references/integration-f
   轮询或重试，继续检查本任务后续每条 `vertc` JSON 输出即可。受控自动化可分别设置
   `VERTC_NO_UPDATE_NOTIFIER=1`、`VERTC_NO_SKILLS_NOTIFIER=1`。
 - `agent` / `env` / `token` 等为内部/legacy 命令（默认隐藏），非默认快速路径；优先用
-  公开命令 `init` / `auth login` / `dev` / `doctor` / `explain-error` / `skills`。
+  公开命令 `init` / `auth login` / `dev` / `doctor` / `docs` / `explain-error` / `skills`。
 
 ## 权威来源
 

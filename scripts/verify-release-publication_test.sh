@@ -83,15 +83,28 @@ EOF
 cat > "$fakebin/npm" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >> "$TEST_STATE/npm-view.log"
 case "${2:-} ${3:-}" in
-  '@volcengine/rtc-cli@0.0.1-rc.2 version') printf '%s\n' '"0.0.1-rc.2"' ;;
-  '@volcengine/rtc-cli dist-tags.latest') printf '%s\n' '"0.0.1-rc.2"' ;;
+  '@volcengine/rtc-cli@0.0.1-rc.2 version')
+    if [[ ! -f "$TEST_STATE/npm-e404-observed" ]]; then
+      : > "$TEST_STATE/npm-e404-observed"
+      echo 'npm error code E404' >&2
+      exit 1
+    fi
+    printf '%s\n' '"0.0.1-rc.2"'
+    ;;
+  '@volcengine/rtc-cli@next version') printf '%s\n' '"0.0.1-rc.2"' ;;
   *) echo "unexpected npm command: $*" >&2; exit 2 ;;
 esac
 EOF
-chmod +x "$fakebin/gh" "$fakebin/npm"
+cat > "$fakebin/sleep" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$TEST_STATE/npm-sleep.log"
+EOF
+chmod +x "$fakebin/gh" "$fakebin/npm" "$fakebin/sleep"
 
 PATH="$fakebin:$PATH" \
+TEST_STATE="$tmp" \
 TEST_TARGET="$target" \
 TEST_RELEASE_JSON="$tmp/release.json" \
 TEST_ASSETS="$assets" \
@@ -102,7 +115,12 @@ TEST_ASSETS="$assets" \
     --notes-file "$notes" \
     --prerelease true \
     --latest false \
-    --npm-tag latest >/dev/null
+    --npm-tag next >/dev/null
+
+[[ "$(cat "$tmp/npm-sleep.log")" == 5 ]]
+grep -Fq -- '--registry https://registry.npmjs.org' "$tmp/npm-view.log"
+grep -Fq -- '--prefer-online' "$tmp/npm-view.log"
+grep -Fq -- '--cache ' "$tmp/npm-view.log"
 
 if PATH="$fakebin:$PATH" \
   TEST_TARGET="$target" \

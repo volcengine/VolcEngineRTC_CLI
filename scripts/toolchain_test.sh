@@ -39,4 +39,16 @@ expected="go1.26.4"
   exit 1
 }
 
+windows_ci="$repo_root/scripts/ci-windows.ps1"
+workflow="$repo_root/.github/workflows/ci.yml"
+[[ -f "$windows_ci" ]]
+grep -Fq '$requiredGoVersion = "go1.25.12"' "$windows_ci"
+grep -Fq 'go test -count=1 ./...' "$windows_ci"
+grep -Fq 'go build -trimpath -o $binary .' "$windows_ci"
+grep -Fq 'run: ./scripts/ci-windows.ps1' "$workflow"
+if grep -Fq 'test \"$RTC_APP_ID\"' "$repo_root/cmd/dev_test.go" || grep -Fq 'touch dev-ran' "$repo_root/cmd/dev_test.go"; then
+  echo "Windows task fixture still depends on POSIX test/touch" >&2
+  exit 1
+fi
+
 echo "toolchain tests: passed"

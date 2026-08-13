@@ -39,6 +39,8 @@ type mcpFixture struct {
 	mu           sync.Mutex
 	requests     []observedRequest
 	cleanupCount int
+	cleanupUA    string
+	cleanupHead  http.Header
 }
 
 func standardTools() []toolDescription {
@@ -55,6 +57,8 @@ func (f *mcpFixture) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	if r.Method == http.MethodDelete {
 		f.cleanupCount++
+		f.cleanupUA = r.UserAgent()
+		f.cleanupHead = r.Header.Clone()
 		if r.Header.Get(sessionIDHeader) != f.issuedID {
 			http.Error(w, "missing session", http.StatusBadRequest)
 			return
@@ -196,6 +200,10 @@ func TestSearchLifecycleAndNormalization(t *testing.T) {
 	if fixture.cleanupCount != 1 {
 		t.Fatalf("cleanup count = %d", fixture.cleanupCount)
 	}
+	if fixture.cleanupUA != "vertc/9.8.7" {
+		t.Fatalf("cleanup user agent = %q", fixture.cleanupUA)
+	}
+	assertHeadersAllowlisted(t, fixture.cleanupHead)
 }
 
 func TestFetchPreservesBytesAndMapsNotFound(t *testing.T) {

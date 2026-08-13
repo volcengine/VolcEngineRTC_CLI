@@ -21,12 +21,17 @@ GOLANGCI         = $(shell go env GOPATH)/bin/golangci-lint
 GORELEASER_VERSION := v2.17.0
 GORELEASER_GO_TOOLCHAIN := go1.26.4
 GORELEASER         = $(shell go env GOPATH)/bin/goreleaser
+COVERAGE_PROFILE  ?= coverage.out
+COVERAGE_HTML     ?= coverage.html
+COVERAGE_THRESHOLD ?= 70.0
+COVERAGE_PACKAGES := ./cmd,./internal/...
+COVERAGE_TEST_PACKAGES := ./cmd ./internal/...
 
 # Repository-specific CI extensions may add prerequisites without changing the
 # portable public build definition.
 -include .make/ci-extra.mk
 
-.PHONY: build test test-node vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files prepare-release-version check-release-version release-tools release-snapshot release-snapshot-test toolchain-test ci ci-go e2e tools install clean
+.PHONY: build test test-node coverage check-coverage check-coverage-test vet fmt fmt-check lint check-error-codes skills-check check-change-contract check-change-contract-test check-release-files prepare-release-version check-release-version release-tools release-snapshot release-snapshot-test toolchain-test ci ci-go e2e tools install clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BIN) .
@@ -36,6 +41,18 @@ test:
 
 test-node:
 	node --test scripts/*.test.js
+
+# Canonical unit-coverage scope. Subprocess E2E tests remain a separate gate.
+coverage:
+	go test -count=1 -covermode=atomic -coverpkg=$(COVERAGE_PACKAGES) -coverprofile="$(COVERAGE_PROFILE)" $(COVERAGE_TEST_PACKAGES)
+	go tool cover -func="$(COVERAGE_PROFILE)" | tail -n 1
+	go tool cover -html="$(COVERAGE_PROFILE)" -o "$(COVERAGE_HTML)"
+
+check-coverage: coverage
+	./scripts/check-coverage.sh "$(COVERAGE_PROFILE)" "$(COVERAGE_THRESHOLD)"
+
+check-coverage-test:
+	./scripts/check-coverage_test.sh
 
 vet:
 	go vet ./...
@@ -93,7 +110,7 @@ toolchain-test:
 	./scripts/toolchain_test.sh
 
 # The Go-only gate used by CI jobs whose image intentionally has no Node.js.
-ci-go: toolchain-test fmt-check vet lint test check-error-codes check-change-contract-test check-change-contract build
+ci-go: toolchain-test fmt-check vet lint test check-coverage-test check-error-codes check-change-contract-test check-change-contract build
 
 # The complete configured local gate.
 ci: ci-go $(CI_EXTRA_TARGETS) test-node

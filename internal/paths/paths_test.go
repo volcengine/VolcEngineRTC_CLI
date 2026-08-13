@@ -35,3 +35,25 @@ func TestWriteFileAtomic(t *testing.T) {
 		t.Fatalf("state file must be private: info=%v", info)
 	}
 }
+
+func TestStateDirUsesPlatformConfigWhenNotOverridden(t *testing.T) {
+	t.Setenv("VERTC_STATE_DIR", "")
+	got := StateDir()
+	if got == "" || filepath.Base(got) != "vertc" {
+		t.Fatalf("StateDir() = %q, want platform config path ending in vertc", got)
+	}
+}
+
+func TestWriteFileAtomicReplacesExistingContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := WriteFileAtomic(path, []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileAtomic(path, []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "new" {
+		t.Fatalf("replacement data=%q err=%v", data, err)
+	}
+}

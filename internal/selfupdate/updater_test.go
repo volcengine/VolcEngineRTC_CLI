@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -240,5 +241,75 @@ func TestSyncSkillsFailureDoesNotAdvanceVersion(t *testing.T) {
 	}
 	if !strings.Contains(string(state), `"version":"1.0.0"`) {
 		t.Fatalf("sync failure advanced state: %s", state)
+	}
+}
+
+func TestDetectInstallMethodPropagatesExecutableFailure(t *testing.T) {
+	t.Cleanup(resetOverrides)
+	ExecutableOverride = func() (string, error) { return "", errors.New("executable unavailable") }
+	method, path, err := DetectInstallMethod()
+	if method != InstallManual || path != "" || err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("method=%s path=%q err=%v", method, path, err)
+	}
+}
+
+func TestBackupLifecycleHandlesAbsentCurrentBinary(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "vertc")
+	if HasBackup(binary) {
+		t.Fatal("backup unexpectedly exists")
+	}
+	if err := RollbackBinary(binary); err != nil {
+		t.Fatalf("rollback without backup must be idempotent: %v", err)
+	}
+	if err := os.WriteFile(binary+".old", []byte("old"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !HasBackup(binary) {
+		t.Fatal("backup was not detected")
+	}
+	if err := RollbackBinary(binary); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(binary); err != nil || string(data) != "old" {
+		t.Fatalf("restored data=%q err=%v", data, err)
+	}
+}
+
+func TestVerifyBinaryOutputContract(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix-specific")
+	}
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, tc := range []struct {
+		name, body, expected, wantError string
+	}{
+		{name: "ok", body: `echo "vertc v1.2.3"`, expected: "1.2.3"},
+		{name: "mismatch", body: `echo "vertc 2.0.0"`, expected: "1.2.3", wantError: "expected 1.2.3"},
+		{name: "short", body: `echo "vertc"`, expected: "1.2.3", wantError: "unexpected version output"},
+		{name: "failure", body: `echo "broken"; exit 4`, expected: "1.2.3", wantError: "broken"},
+	} {
+		err := VerifyBinary(context.Background(), tc.expected, write(tc.name, tc.body))
+		if tc.wantError == "" && err != nil {
+			t.Errorf("%s: unexpected error: %v", tc.name, err)
+		}
+		if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+			t.Errorf("%s: error=%v, want containing %q", tc.name, err, tc.wantError)
+		}
+	}
+}
+
+func TestRunNpmInstallRejectsPathOutsideNpmPrefix(t *testing.T) {
+	t.Cleanup(resetOverrides)
+	err := RunNpmInstall(context.Background(), "1.2.3", filepath.Join(t.TempDir(), "vertc"))
+	if err == nil || !strings.Contains(err.Error(), "cannot derive npm prefix") {
+		t.Fatalf("error=%v", err)
 	}
 }

@@ -18,7 +18,7 @@ func TestDocsCommandsAgainstScriptedMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	search := run(t, dir, []string{"RTC_APP_KEY=must-not-be-forwarded"}, // public-scan: allow; gitleaks:allow — synthetic test credential
+	search := run(t, dir, []string{"RTC_APP_KEY=must-not-be-forwarded", "AI_AGENT=e2e", "VE_SKILL_ID=byted-interactai-guide/0.0.4"}, // public-scan: allow; gitleaks:allow — synthetic test credential
 		"docs", "search", "audio", "--limit", "1", "--format", "json")
 	if search.code != 0 || search.stderr != "" {
 		t.Fatalf("search exit=%d stdout=%s stderr=%s", search.code, search.stdout, search.stderr)
@@ -33,12 +33,12 @@ func TestDocsCommandsAgainstScriptedMCP(t *testing.T) {
 		t.Fatalf("search result = %#v", first)
 	}
 
-	fetch := run(t, dir, nil, "docs", "fetch", "rtc/audio", "--format", "pretty")
+	fetch := run(t, dir, []string{"AI_AGENT=e2e"}, "docs", "fetch", "rtc/audio", "--format", "pretty")
 	if fetch.code != 0 || fetch.stdout != "# Fixture RTC Document\n\nExact markdown.  \n" || fetch.stderr != "" {
 		t.Fatalf("fetch exit=%d stdout=%q stderr=%q", fetch.code, fetch.stdout, fetch.stderr)
 	}
 
-	list := run(t, dir, nil, "docs", "list", "--query", "video", "--format", "json")
+	list := run(t, dir, []string{"AI_AGENT=e2e"}, "docs", "list", "--query", "video", "--format", "json")
 	if list.code != 0 {
 		t.Fatalf("list exit=%d stdout=%s stderr=%s", list.code, list.stdout, list.stderr)
 	}
@@ -49,7 +49,7 @@ func TestDocsCommandsAgainstScriptedMCP(t *testing.T) {
 }
 
 func TestDocsToolFailureIsTyped(t *testing.T) {
-	r := run(t, t.TempDir(), nil, "docs", "search", "force-error", "--format", "json")
+	r := run(t, t.TempDir(), []string{"AI_AGENT=e2e"}, "docs", "search", "force-error", "--format", "json")
 	if r.code == 0 {
 		t.Fatalf("expected failure: %s", r.stdout)
 	}

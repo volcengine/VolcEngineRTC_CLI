@@ -20,6 +20,29 @@ command or E2E test, error codes need their snapshot, and template sources need
 template tests. It uses the MR diff base or push base in CI, and `origin/HEAD`
 when run locally.
 
+### Go unit coverage
+
+Run the canonical coverage workflow from the repository root:
+
+```bash
+make coverage        # writes coverage.out and coverage.html, then prints the total
+make check-coverage  # regenerates both reports and enforces the configured floor
+```
+
+The metric uses uncached atomic statement coverage for production packages in
+`cmd/` and `internal/`, driven by tests in those same package trees. Subprocess
+E2E tests under `tests/` remain a separate functional gate because execution in
+their child CLI binary is not represented by a normal Go unit-test profile.
+
+CI pipelines enforce an aggregate floor of 70.0% through the same Make target.
+They intentionally do not apply
+one threshold to every package: command entry points, platform adapters, and
+pure logic have different testability. New tests should assert observable
+success, failure, boundary, dry-run, or rollback behavior rather than execute
+lines only to increase the percentage. Override report paths or the local floor
+when needed with `COVERAGE_PROFILE`, `COVERAGE_HTML`, and
+`COVERAGE_THRESHOLD`.
+
 ## Contribution recipes
 
 ### Add / change a command

@@ -5,6 +5,7 @@
 *.test
 *.prof
 *.out
+coverage.html
 
 # Node (generated web projects / scaffolds run in-tree)
 node_modules/

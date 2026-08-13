@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 )
 
 func TestLoadTaskfileV1KeepsLegacyRuntime(t *testing.T) {
@@ -73,6 +75,20 @@ runtime:
 	}
 	if tf.ServerManagedAgent() {
 		t.Fatal("only taskfile v2 may opt into server-managed agent control")
+	}
+}
+
+func TestLoadTaskfileReportsMissingAndMalformedContracts(t *testing.T) {
+	_, err := LoadTaskfile(t.TempDir())
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.template.not_found" {
+		t.Fatalf("missing taskfile error=%v", err)
+	}
+	dir := writeTaskfile(t, "version: [not-an-int]\n")
+	_, err = LoadTaskfile(dir)
+	typed, ok = errs.As(err)
+	if !ok || typed.Code != "vertc.template.render_failed" {
+		t.Fatalf("malformed taskfile error=%v", err)
 	}
 }
 

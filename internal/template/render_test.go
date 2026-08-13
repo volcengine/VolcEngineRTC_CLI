@@ -42,3 +42,24 @@ func TestWriteMaterializes(t *testing.T) {
 		t.Fatalf("expected src/main.js written: %v", err)
 	}
 }
+
+func TestRenderAvailableTemplateWithMissingEmbeddedRootIsTyped(t *testing.T) {
+	tmpl := Template{Scene: "test", Platform: "web", Available: true, dir: "missing"}
+	_, err := Render(tmpl, config.Default("x", "test", "web"))
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.template.render_failed" {
+		t.Fatalf("error=%v, want vertc.template.render_failed", err)
+	}
+}
+
+func TestWriteRejectsParentThatIsAFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "src"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := Write(dir, []RenderedFile{{Path: "src/main.js", Content: "x"}})
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.template.render_failed" {
+		t.Fatalf("error=%v, want vertc.template.render_failed", err)
+	}
+}

@@ -1,6 +1,6 @@
 {
   "name": "@volcengine/rtc-cli",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "VolcEngine RTC developer-workflow CLI",
   "bin": {
     "vertc": "scripts/run.js"

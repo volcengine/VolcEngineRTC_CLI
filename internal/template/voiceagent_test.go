@@ -26,3 +26,22 @@ func TestVoiceAgentTemplateAvailableAndDefault(t *testing.T) {
 		t.Fatal("voice-call/web must not be registered")
 	}
 }
+
+func TestRegistryReturnsDefensiveCopiesAndAvailableEntries(t *testing.T) {
+	all := List()
+	available := Available()
+	if len(all) == 0 || len(available) == 0 {
+		t.Fatal("published registry must expose an available template")
+	}
+	for _, tmpl := range available {
+		if !tmpl.Available {
+			t.Fatalf("Available returned reserved template: %+v", tmpl)
+		}
+	}
+	originalScene := all[0].Scene
+	all[0].Scene = "mutated"
+	again := List()
+	if again[0].Scene != originalScene {
+		t.Fatalf("List exposed registry backing storage: %+v", again[0])
+	}
+}

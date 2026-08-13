@@ -20,6 +20,7 @@ import (
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/telemetry"
 )
 
 const (
@@ -83,6 +84,10 @@ func newClient(endpoint, version string, httpClient *http.Client, options ...Opt
 		return nil, errs.New("vertc.docs.invalid_argument", errs.TypeValidation,
 			"CLI version is empty").WithParam("version")
 	}
+	userAgent := meta.UserAgentProduct + "/" + version
+	if invocationUserAgent, ok := telemetry.GetInvocationUserAgent(); ok {
+		userAgent = invocationUserAgent
+	}
 	if httpClient == nil {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		httpClient = &http.Client{
@@ -95,7 +100,7 @@ func newClient(endpoint, version string, httpClient *http.Client, options ...Opt
 	c := &Client{
 		endpoint:  endpoint,
 		version:   version,
-		userAgent: meta.UserAgentProduct + "/" + version,
+		userAgent: userAgent,
 		http:      httpClient,
 		nextID:    1,
 		sleep: func(ctx context.Context, d time.Duration) error {

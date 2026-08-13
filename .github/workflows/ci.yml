@@ -69,6 +69,30 @@ jobs:
           ./vertc version
           ./vertc --help >/dev/null
 
+  coverage:
+    name: Coverage gate (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Enforce aggregate Go unit coverage
+        run: make check-coverage COVERAGE_THRESHOLD=70.0
+      - name: Retain coverage reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: go-unit-coverage
+          path: |
+            coverage.out
+            coverage.html
+          if-no-files-found: warn
+          retention-days: 14
+
   template-build:
     name: Build generated web templates
     runs-on: ubuntu-latest

@@ -100,7 +100,11 @@ func TestMain(m *testing.M) {
 }
 
 func serveTopicDocsFixture(w http.ResponseWriter, r *http.Request) {
-	if r.UserAgent() != "vertc/0.0.1-dev" {
+	allowedUserAgents := map[string]bool{
+		"vertc/0.0.1-dev invocation/direct caller/e2e":                                   true,
+		"vertc/0.0.1-dev invocation/skill caller/e2e skill/byted-interactai-guide#0.0.4": true,
+	}
+	if !allowedUserAgents[r.UserAgent()] {
 		http.Error(w, "unexpected user agent", http.StatusForbidden)
 		return
 	}

@@ -160,6 +160,15 @@ func TestExplicitResourceSelectorsValidateIDsAndOrder(t *testing.T) {
 	}
 }
 
+func TestNoActiveRTCAppHintRoutesToServiceActivation(t *testing.T) {
+	hint := noActiveRTCAppHint()
+	for _, marker := range []string{"complete real-name authentication", "activate RTC", "console.volcengine.com/rtc?from=doc"} {
+		if !strings.Contains(hint, marker) {
+			t.Errorf("no-app hint missing %q: %s", marker, hint)
+		}
+	}
+}
+
 func TestBootstrapNonInteractiveReturnsBotCandidatesBeforeAppKey(t *testing.T) {
 	oldFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
 	fake := &fakeRTCAppClient{

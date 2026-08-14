@@ -40,7 +40,7 @@ make build
 
 ## 快速开始
 
-开始前，请确保账号下已有 RTC 应用。对话式 AI 智能体可选；如果没有，`dev` 会使用内置默认 Scene。
+开始前，请确保账号已开通 RTC 服务（[开通指引](https://docs.volcengine.com/docs/6348/69865?lang=zh)）。对话式 AI 智能体可选；如果没有，`dev` 会使用内置默认 Scene。
 
 ```bash
 # 1. 创建项目

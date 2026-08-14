@@ -40,7 +40,7 @@ make build
 
 ## Quick start
 
-Before you start, make sure your Volcengine account has an RTC application. A conversational-AI agent is optional; if the account has none, `dev` uses the built-in default scene.
+Before you start, make sure RTC is activated for the account ([activation guide](https://docs.volcengine.com/docs/6348/69865?lang=zh)). A conversational-AI agent is optional; if the account has none, `dev` uses the built-in default scene.
 
 ```bash
 # 1. Create a project

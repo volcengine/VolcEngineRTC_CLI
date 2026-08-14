@@ -289,7 +289,7 @@ func TestVoiceChatRuntimeEvidenceMatchesExecutionLayers(t *testing.T) {
 
 func TestVoiceAgentSkillUsesAgentSafeCredentialSetup(t *testing.T) {
 	skill := readSkillFile(t, "SKILL.md")
-	for _, marker := range []string{"vertc.dev.selection_required", "error.details", "--app-id", "--bot-id", "禁止向用户索取", "AppKey", "console.volcengine.com/conversational-ai/agentManage"} {
+	for _, marker := range []string{"vertc.dev.selection_required", "error.details", "--app-id", "--bot-id", "禁止向用户索取", "AppKey", "console.volcengine.com/conversational-ai/agentManage", "未发现可用 RTC 应用", "console.volcengine.com/rtc?from=doc", "完成实名认证并开通 RTC 服务"} {
 		if !strings.Contains(skill, marker) {
 			t.Errorf("SKILL.md missing Agent-safe setup marker %q", marker)
 		}

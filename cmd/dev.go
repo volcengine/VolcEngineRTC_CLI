@@ -80,7 +80,14 @@ type devResourceBot struct {
 	Name  string `json:"name,omitempty"`
 }
 
-const conversationalAIConsoleURL = "https://console.volcengine.com/conversational-ai/agentManage"
+const (
+	conversationalAIConsoleURL = "https://console.volcengine.com/conversational-ai/agentManage"
+	rtcServiceConsoleURL       = "https://console.volcengine.com/rtc?from=doc"
+)
+
+func noActiveRTCAppHint() string {
+	return "open " + rtcServiceConsoleURL + " to complete real-name authentication and activate RTC"
+}
 
 func newDevCmd() *cobra.Command {
 	var (
@@ -332,7 +339,7 @@ func bootstrapDevRTCAppCredentialsWithOptions(
 		if len(apps) == 0 {
 			return nil, errs.New("vertc.dev.app_setup_failed", errs.TypeNotFound,
 				"DescribeNewRtcApps returned no status=1 RTC applications").
-				WithHint("create an RTC application or verify the current account/project permissions")
+				WithHint("%s", noActiveRTCAppHint())
 		}
 
 		requestedAppID := strings.TrimSpace(options.AppID)

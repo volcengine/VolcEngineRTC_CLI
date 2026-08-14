@@ -70,7 +70,8 @@ vertc dev
   展示；告知候选总数并提供 `https://console.volcengine.com/conversational-ai/agentManage`
   供用户查看，再将用户返回的 Bot 名称或 ID 从 `error.details.bots` 解析为唯一 Bot ID；
   名称不唯一时只展示同名候选。需要重新选择时使用 `--reconfigure`。
-  启动后在页面点击 **Start** 进房对话。
+  启动后在页面点击 **Start** 进房对话。若 `dev` 未发现可用 RTC 应用，直接让用户打开
+  `https://console.volcengine.com/rtc?from=doc` 完成实名认证并开通 RTC 服务。
 - 失败先跑 `vertc doctor`（只读定位），再按下方路由表处理。
 
 ## 意图 / 阶段 → references 路由

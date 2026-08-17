@@ -54,9 +54,9 @@ vertc auth login
 vertc dev
 ```
 
-Open the URL printed in the terminal and click **Start** to join the room and talk. On the first run, `vertc` finds the RTC applications and conversational-AI agents in the account. It prompts only when there is more than one choice. If setup or runtime fails, run `vertc doctor`; it inspects the problem without changing the project.
+Open the URL printed in the terminal and click **Start** to join the room and talk. On the first run, `vertc` selects a sole RTC application automatically and prompts when several applications exist. Any available conversational-AI agent requires user selection, even when there is only one; when none exist, `dev` uses the built-in default scene. If setup or runtime fails, run `vertc doctor`; it inspects the problem without changing the project.
 
-See [Voice-agent projects](./docs/voice-agent.md) for the generated layout, runtime options, and identity management.
+See [Voice-agent projects](./docs/voice-agent.md#english) for the generated layout, runtime options, and identity management.
 
 ## Core capabilities
 
@@ -95,7 +95,7 @@ To match the Skill to the current `vertc` version or repair an existing installa
 vertc skills sync
 ```
 
-Agents and automation scripts should pass `--format json` explicitly so output does not depend on the terminal environment. stdout contains data only, while progress and warnings go to stderr. Failures return a non-zero exit code and a stable `error.code`. See [Automation and structured output](./docs/automation.md) for headless authorization, non-interactive resource selection, error handling, and notification settings.
+Agents and automation scripts should pass `--format json` explicitly so output does not depend on the terminal environment. stdout contains data only, while progress and warnings go to stderr. Failures return a non-zero exit code and a stable `error.code`. See [Automation and structured output](./docs/automation.md#english) for headless authorization, non-interactive resource selection, error handling, and notification settings.
 
 ## Configuration and security
 
@@ -104,16 +104,16 @@ Agents and automation scripts should pass `--format json` explicitly so output d
 - Signin credentials are stored in the protected `$VERTC_HOME/auth.json` file by default. You can choose the operating-system keyring instead.
 - `RTC_APP_KEY` is never written to project configuration, `VITE_*` frontend variables, logs, command arguments, or structured output; never provide AppKey in chat.
 
-See [Automation and structured output](./docs/automation.md) for authentication modes, credential storage, and automation safety boundaries. See [SECURITY.md](./SECURITY.md) for vulnerability reporting.
+See [Automation and structured output](./docs/automation.md#english) for authentication modes, credential storage, and automation safety boundaries. See [SECURITY.md](./SECURITY.md#english) for vulnerability reporting.
 
 ## Documentation
 
-- [Voice-agent projects](./docs/voice-agent.md) — generated layout, first-run configuration, runtime modes, and identity behavior
-- [Automation and structured output](./docs/automation.md) — authentication, JSON envelopes, error routing, dry runs, notices, and Skills
-- [Troubleshooting](./docs/troubleshooting.md) — installation, authentication, templates, credentials, and runtime recovery
+- [Voice-agent projects](./docs/voice-agent.md#english) — generated layout, first-run configuration, runtime modes, and identity behavior
+- [Automation and structured output](./docs/automation.md#english) — authentication, JSON envelopes, error routing, dry runs, notices, and Skills
+- [Troubleshooting](./docs/troubleshooting.md#english) — installation, authentication, templates, credentials, and runtime recovery
 - [CHANGELOG.md](./CHANGELOG.md) — release changes
-- [SUPPORT.md](./SUPPORT.md) — where to ask questions or report bugs
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — development setup and contribution workflow
+- [SUPPORT.md](./SUPPORT.md#english) — where to ask questions or report bugs
+- [CONTRIBUTING.md](./CONTRIBUTING.md#english) — development setup and contribution workflow
 
 ## Development and contributing
 
@@ -123,4 +123,4 @@ make test
 make ci
 ```
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. This project is licensed under the [MIT License](./LICENSE).
+Read [CONTRIBUTING.md](./CONTRIBUTING.md#english) before opening a pull request. This project is licensed under the [MIT License](./LICENSE).

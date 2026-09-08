@@ -66,12 +66,13 @@ func newDocsSearchCmd() *cobra.Command {
 			defer closeTopicDocsClient(client)
 			result, err := client.Search(c.Context(), args[0], limit)
 			if err != nil {
-				return err
+				return withDocsSyntaxHint("search", err)
 			}
 			return out().Data(result)
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 10, fmt.Sprintf("maximum results to return locally (1-%d)", topicdocs.MaxSearchLimit))
+	attachDocsSyntaxHint(cmd, "search")
 	affordance.Attach(cmd, affordance.Affordance{
 		When:     []string{"You know the concept or symptom but not the RTC document id"},
 		Avoid:    []string{"You already have an exact document id; use docs fetch"},
@@ -82,9 +83,10 @@ func newDocsSearchCmd() *cobra.Command {
 }
 
 func newDocsFetchCmd() *cobra.Command {
+	var matchTerms []string
 	cmd := &cobra.Command{
 		Use:   "fetch <doc-id>",
-		Short: "Fetch one RTC document as exact Markdown",
+		Short: "Fetch one RTC document, optionally extracting matched Markdown sections",
 		Args:  exactlyOneDocsArg("fetch", "doc-id", "<doc-id>"),
 		RunE: func(c *cobra.Command, args []string) error {
 			client, err := newTopicDocsClient()
@@ -94,16 +96,29 @@ func newDocsFetchCmd() *cobra.Command {
 			defer closeTopicDocsClient(client)
 			result, err := client.Fetch(c.Context(), args[0])
 			if err != nil {
-				return err
+				return withDocsSyntaxHint("fetch", err)
+			}
+			if len(matchTerms) > 0 {
+				matched, err := topicdocs.MatchFetch(result, matchTerms)
+				if err != nil {
+					return withDocsSyntaxHint("fetch", err)
+				}
+				return out().Data(matched)
 			}
 			return out().Data(result)
 		},
 	}
+	cmd.Flags().StringArrayVar(&matchTerms, "match", nil, "extract complete Markdown sections/tables containing this term (repeatable)")
+	attachDocsSyntaxHint(cmd, "fetch")
 	affordance.Attach(cmd, affordance.Affordance{
-		When:     []string{"You have an exact id from docs search/list and need the authoritative Markdown"},
-		Avoid:    []string{"You only have keywords; use docs search first"},
-		Prereq:   []string{"An exact RTC document id"},
-		Examples: []string{meta.BinName + " docs fetch <doc-id>", meta.BinName + " docs fetch <doc-id> --format json"},
+		When:   []string{"You have an exact id from docs search/list and need the authoritative Markdown"},
+		Avoid:  []string{"You only have keywords; use docs search first"},
+		Prereq: []string{"An exact RTC document id"},
+		Examples: []string{
+			meta.BinName + " docs fetch <doc-id>",
+			meta.BinName + " docs fetch <doc-id> --format json",
+			meta.BinName + " docs fetch <doc-id> --match Provider --match 2025-06-01 --format json",
+		},
 	})
 	return cmd
 }
@@ -114,7 +129,7 @@ func newDocsListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the RTC document index with local filtering and paging",
-		Args:  cobra.NoArgs,
+		Args:  noDocsArgs("list"),
 		RunE: func(c *cobra.Command, _ []string) error {
 			client, err := newTopicDocsClient()
 			if err != nil {
@@ -123,7 +138,7 @@ func newDocsListCmd() *cobra.Command {
 			defer closeTopicDocsClient(client)
 			result, err := client.List(c.Context(), query, offset, limit)
 			if err != nil {
-				return err
+				return withDocsSyntaxHint("list", err)
 			}
 			return out().Data(result)
 		},
@@ -131,6 +146,7 @@ func newDocsListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&query, "query", "", "case-insensitive title/summary filter applied locally")
 	cmd.Flags().IntVar(&offset, "offset", 0, "zero-based local result offset")
 	cmd.Flags().IntVar(&limit, "limit", 20, fmt.Sprintf("maximum local page size (1-%d)", topicdocs.MaxListLimit))
+	attachDocsSyntaxHint(cmd, "list")
 	affordance.Attach(cmd, affordance.Affordance{
 		When:     []string{"You need to browse document ids or inspect a category without ranking"},
 		Avoid:    []string{"You need relevance-ranked results; use docs search"},
@@ -143,12 +159,73 @@ func newDocsListCmd() *cobra.Command {
 func exactlyOneDocsArg(action, param, placeholder string) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
-			return errs.New("vertc.docs.invalid_argument", errs.TypeValidation,
-				"docs %s requires exactly one argument: %s", action, placeholder).
-				WithParam(param).
-				WithHint("run `%s docs %s --help`", meta.BinName, action)
+			return docsSyntaxError(action, param,
+				"docs %s requires exactly one argument: %s", action, placeholder)
 		}
 		return nil
+	}
+}
+
+func noDocsArgs(action string) cobra.PositionalArgs {
+	return func(_ *cobra.Command, args []string) error {
+		if len(args) != 0 {
+			return docsSyntaxError(action, "arguments", "docs %s does not accept positional arguments", action)
+		}
+		return nil
+	}
+}
+
+func attachDocsSyntaxHint(cmd *cobra.Command, action string) {
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return docsSyntaxError(action, "flags", "%s", err.Error())
+	})
+}
+
+func docsSyntaxError(action, param, message string, args ...any) error {
+	usage, example, required := docsSyntax(action)
+	return errs.New("vertc.docs.invalid_argument", errs.TypeValidation, message, args...).
+		WithParam(param).
+		WithDetails(map[string]any{
+			"required_arguments": required,
+			"usage":              usage,
+			"example":            example,
+		}).
+		WithHint("use `%s`; example: `%s`", usage, example)
+}
+
+func withDocsSyntaxHint(action string, err error) error {
+	typed, ok := errs.As(err)
+	if !ok || typed.Code != "vertc.docs.invalid_argument" {
+		return err
+	}
+	usage, example, required := docsSyntax(action)
+	if typed.Details == nil {
+		typed.Details = map[string]any{}
+	}
+	typed.Details["required_arguments"] = required
+	typed.Details["usage"] = usage
+	typed.Details["example"] = example
+	if typed.Hint == "" {
+		typed = typed.WithHint("use `%s`; example: `%s`", usage, example)
+	}
+	return typed
+}
+
+func docsSyntax(action string) (string, string, []string) {
+	switch action {
+	case "search":
+		return fmt.Sprintf(`%s docs search "<query>" [--limit <1-%d>] [--format json]`, meta.BinName, topicdocs.MaxSearchLimit),
+			meta.BinName + ` docs search "AibotUpdate 2025-08-01 ServiceTier" --limit 2 --format json`,
+			[]string{"query (one positional argument)"}
+	case "fetch":
+		return meta.BinName + ` docs fetch <doc-id> [--match "<term>" ...] [--format json]`,
+			meta.BinName + ` docs fetch <doc-id-from-search-results.id> --match "ServiceTier" --format json`,
+			[]string{"doc-id (one positional argument from docs search results[].id)"}
+	case "list":
+		return fmt.Sprintf(`%s docs list [--query "<text>"] [--offset <n>] [--limit <1-%d>] [--format json]`, meta.BinName, topicdocs.MaxListLimit),
+			meta.BinName + ` docs list --query "audio" --offset 0 --limit 20 --format json`, nil
+	default:
+		return meta.BinName + " docs " + action + " --help", meta.BinName + " docs " + action + " --help", nil
 	}
 }
 

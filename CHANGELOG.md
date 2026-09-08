@@ -7,6 +7,26 @@
 
 ## 未发布
 
+### 新增
+
+- `docs fetch` 新增 `--match` 参数，支持重复指定，按关键词提取 Markdown 章节或表格，并返回原文身份元数据、匹配情况和截断状态。
+- InteractAI Skill 支持生成、修改和校验 VoiceChat/Aibot 配置，配置模型、验证流程和输出格式分别放入独立参考文档。
+
+### 修复
+
+- flag 解析或通用位置参数校验失败时，返回当前命令的用法；`docs search/fetch/list` 的参数错误补充位置参数要求和示例。
+- 兼容 RTC 文档 MCP 的 `fetch_doc`、`list_docs` 分页参数及 `list_docs` 过滤参数 schema，校验完整文档标记并移除协议尾部元数据。
+- Skill 命令校验识别 `--` 参数终止符，支持其后的负数错误码参数。
+
+### 改进
+
+- 文档检索优先通过精确专题标题执行 `docs list → fetch --match`，未唯一命中时回退 `docs search → fetch`。
+- Voice Agent 配置以 StartVoiceChat 核心模型为准，可转换为 AibotCreate 配置或 AibotUpdate JSON Merge Patch。
+- 字段范围、枚举和 Provider 兼容性依据当前官方正文或服务端结果验证；证据不足或冲突时返回 `valid=null`，保留候选预览，可执行配置为空。
+- 集成诊断支持快速判断和完整阶段排查，并说明 VoiceChat 事件和客户端音频证据能确认哪些阶段。
+- 调整 CLI 和 Skill 更新提示：用户询问 Runtime、安装或更新时展示，产品咨询、配置和诊断时忽略。
+- 调整 AI 调用方的识别优先级和环境变量匹配范围，修改 User-Agent 超长时的裁剪规则，并支持版本构建元数据。
+
 ## 0.0.6
 
 _发布日期：2026-08-13_

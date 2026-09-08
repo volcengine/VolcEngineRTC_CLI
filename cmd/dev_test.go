@@ -1129,7 +1129,10 @@ func TestServerManagedTaskEnvUsesCLIWithoutLongTermCredentials(t *testing.T) {
 	if got := taskEnvValue(taskEnv, "VERTC_BUSINESS_ID"); got != meta.BusinessID {
 		t.Fatalf("VERTC_BUSINESS_ID = %q", got)
 	}
-	wantUserAgent := "vertc/1.2.3 invocation/skill skill/byted-interactai-guide#0.0.1"
+	wantUserAgent, ok := telemetry.GetInvocationUserAgent()
+	if !ok {
+		t.Fatal("invocation user agent was not generated")
+	}
 	if got := taskEnvValue(taskEnv, "VERTC_OPENAPI_USER_AGENT"); got != wantUserAgent {
 		t.Fatalf("VERTC_OPENAPI_USER_AGENT = %q, want %q", got, wantUserAgent)
 	}

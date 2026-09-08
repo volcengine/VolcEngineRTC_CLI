@@ -75,7 +75,7 @@ vertc dev
 | `dev [--web-port N] [--server-port N] [--auto-port]` | 配置 RTC 资源、检查端口并运行项目         |
 | `doctor [cli\|project]`                            | 检查 CLI 和项目是否就绪，不修改项目        |
 | `explain-error <code>`                             | 离线查询 SDK 与对话式 AI 错误码        |
-| `docs search/fetch/list`                           | 搜索、读取或浏览 RTC 文档             |
+| `docs search/fetch/list`                           | 搜索、读取或浏览 RTC 文档；`fetch --match` 可定向提取章节/表格 |
 | `skills list/read/sync`                            | 查看或同步当前 Release 内嵌的官方 Skill |
 | `update [--check\|--force]`                        | 检查或更新 npm 管理的安装             |
 

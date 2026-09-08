@@ -328,6 +328,57 @@ func TestToolRequiredSchemaCompatibility(t *testing.T) {
 	}
 }
 
+func TestPaginatedToolSchemaCompatibility(t *testing.T) {
+	noExtra := false
+	tools := standardTools()
+	tools[1].InputSchema = toolSchema{
+		Type: "object", AdditionalProperties: &noExtra, Required: []string{"id"},
+		Properties: map[string]schemaProperty{
+			"id": {Type: "string"}, "line_offset": {Type: "integer"}, "line_limit": {Type: "integer"},
+		},
+	}
+	if err := validateTool(tools, "fetch_doc"); err != nil {
+		t.Fatalf("paginated fetch schema: %v", err)
+	}
+	tools[2].InputSchema = toolSchema{
+		Type: "object", AdditionalProperties: &noExtra,
+		Properties: map[string]schemaProperty{
+			"line_offset": {Type: "integer"}, "line_limit": {Type: "integer"}, "grep": {Type: "string"},
+		},
+	}
+	if err := validateTool(tools, "list_docs"); err != nil {
+		t.Fatalf("paginated list schema: %v", err)
+	}
+
+	fixture := &mcpFixture{
+		tools: tools, toolText: map[string]string{
+			"fetch_doc": "# RTC\n\n<<<PAGE_INFO total_lines=1 has_more=false next_line_offset=none>>>\n<<<END_OF_DOCUMENT>>>",
+		},
+	}
+	client, _ := fixtureClient(t, fixture)
+	result, err := client.Fetch(context.Background(), "doc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "# RTC\n" {
+		t.Fatalf("content = %q", result.Content)
+	}
+
+	listFixture := &mcpFixture{
+		tools: tools, toolText: map[string]string{
+			"list_docs": "# RTC\n\n> Format: - [directory/title](id): summary\n\n- [Audio](audio/id): summary\n\n<<<PAGE_INFO total_lines=5 has_more=false next_line_offset=none>>>\n<<<END_OF_DOCUMENT>>>",
+		},
+	}
+	client, _ = fixtureClient(t, listFixture)
+	listed, err := client.List(context.Background(), "", 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Count != 1 || listed.Documents[0].ID != "audio/id" {
+		t.Fatalf("list result = %#v", listed)
+	}
+}
+
 func TestRequiredSchemaDriftStopsBeforeToolCall(t *testing.T) {
 	tools := standardTools()
 	tools[0].InputSchema.Required = []string{"query", "query"}

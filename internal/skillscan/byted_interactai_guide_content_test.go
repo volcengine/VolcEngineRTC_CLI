@@ -21,11 +21,17 @@ import (
 const interactAIGuideSkillDir = "skills/byted-interactai-guide"
 
 var expectedReferenceDomains = map[string]string{
-	"web-sdk-diagnosis.md":   "web-sdk",
-	"voice-agent-runtime.md": "voice-agent",
-	"voicechat-api.md":       "voice-agent",
-	"integration-flow.md":    "integration",
-	"capabilities.md":        "product-capability",
+	"web-sdk-diagnosis.md":             "web-sdk",
+	"voice-agent-runtime.md":           "voice-agent",
+	"voice-agent-config.md":            "voice-agent",
+	"voice-agent-config-model.md":      "voice-agent",
+	"voice-agent-config-validation.md": "voice-agent",
+	"voice-agent-config-output.md":     "voice-agent",
+	"voicechat-api.md":                 "voice-agent",
+	"integration-flow.md":              "integration",
+	"integration-stages.md":            "integration",
+	"capabilities.md":                  "product-capability",
+	"topic-doc-catalog.md":             "product-capability",
 }
 
 var allowedDomains = map[string]bool{
@@ -118,11 +124,68 @@ func TestWebSdkDiagnosisHasNoVoiceAgentConcepts(t *testing.T) {
 // TestSkillRoutesToAllReferences asserts the thin-router SKILL.md links to every
 // reference (route table), so no domain is orphaned.
 func TestSkillRoutesToAllReferences(t *testing.T) {
-	skill := readSkillFile(t, "SKILL.md")
+	skill := readSkillFile(t, "SKILL.md") + "\n" +
+		readSkillFile(t, filepath.Join("references", "voice-agent-config.md"))
 	for name := range expectedReferenceDomains {
 		link := "references/" + name
 		if !strings.Contains(skill, link) {
 			t.Errorf("SKILL.md does not route to %q", link)
+		}
+	}
+}
+
+func TestVoiceAgentConfigTreatsMutableLimitsAsDynamicFacts(t *testing.T) {
+	validation := readSkillFile(t, filepath.Join("references", "voice-agent-config-validation.md"))
+	for _, marker := range []string{
+		"正文未提及的字段保持 `unknown`", "`valid=null`", "服务端执行响应是最终事实来源",
+		"vertc docs search", "vertc docs fetch", "同轮证据冲突",
+	} {
+		if !strings.Contains(validation, marker) {
+			t.Errorf("voice-agent-config-validation.md missing %q", marker)
+		}
+	}
+	for _, staleRange := range []string{"[-50,100]", "[500,3000)"} {
+		if strings.Contains(validation, staleRange) {
+			t.Errorf("voice-agent-config-validation.md hardcodes mutable range %q", staleRange)
+		}
+	}
+}
+
+func TestDocumentationRetrievalUsesExactCatalogThenSearchFallback(t *testing.T) {
+	documentation := readSkillFile(t, filepath.Join("references", "documentation-retrieval.md"))
+	validation := readSkillFile(t, filepath.Join("references", "voice-agent-config-validation.md"))
+	catalog := readSkillFile(t, filepath.Join("references", "topic-doc-catalog.md"))
+	for _, command := range []string{"vertc docs search", "vertc docs list", "vertc docs fetch"} {
+		if !strings.Contains(documentation, command) {
+			t.Errorf("documentation-retrieval.md missing %q", command)
+		}
+	}
+	for _, marker := range []string{"vertc docs list", "vertc docs search", "vertc docs fetch", "query 是一个带引号的位置参数", "error.details.usage/example"} {
+		if !strings.Contains(validation, marker) {
+			t.Errorf("voice-agent-config-validation.md missing %q", marker)
+		}
+	}
+	if strings.Contains(documentation+validation, "vertc docs resolve") {
+		t.Error("documentation workflow must not depend on docs resolve")
+	}
+	for _, marker := range []string{"StartVoiceChat", "配置语音合成 TTS", "网页 URL 的数字", "无需读取两者的接口文档"} {
+		if !strings.Contains(catalog, marker) {
+			t.Errorf("topic-doc-catalog.md missing %q", marker)
+		}
+	}
+}
+
+func TestAibotConfigProjectsFromStartVoiceChat(t *testing.T) {
+	routing := readSkillFile(t, filepath.Join("references", "voice-agent-config.md"))
+	validation := readSkillFile(t, filepath.Join("references", "voice-agent-config-validation.md"))
+	output := readSkillFile(t, filepath.Join("references", "voice-agent-config-output.md"))
+	for _, marker := range []string{
+		"`{AgentConfig,Config}` 核心配置统一以 StartVoiceChat 文档为准",
+		"AibotCreate/AibotUpdate 是输出投影目标",
+		"先生成并验证同一份 StartVoiceChat 核心",
+	} {
+		if !strings.Contains(routing+validation+output, marker) {
+			t.Errorf("Aibot projection contract missing %q", marker)
 		}
 	}
 }
@@ -264,12 +327,13 @@ func TestVoiceChatRuntimeEvidenceMatchesExecutionLayers(t *testing.T) {
 		}
 	}
 
-	integration := readSkillFile(t, filepath.Join("references", "integration-flow.md"))
+	integration := readSkillFile(t, filepath.Join("references", "integration-flow.md")) + "\n" +
+		readSkillFile(t, filepath.Join("references", "integration-stages.md")) + "\n" + runtime
 	for _, marker := range []string{
-		"阶段 5–7 的失败来源归 `voice-agent`",
-		"阶段 8 的媒体绑定归 `integration`",
-		"未配置则记录「未观测」并继续",
-		"适配层成功且无 typed error",
+		"StartVoiceChat 下发 | voice-agent",
+		"Agent 订阅用户音频 | integration",
+		"缺少未配置的 `taskStart` 回调不构成失败",
+		"适配层成功 envelope 且无 typed error",
 		"下发成功后收到异步初始化错误",
 	} {
 		if !strings.Contains(integration, marker) {
@@ -324,16 +388,11 @@ func TestSkillLifecycleNoticePolicy(t *testing.T) {
 	for _, marker := range []string{
 		"每次读取 `vertc --format json`",
 		"成功或失败输出",
-		"不能只检查",
-		"不得静默",
-		"完成并验证当前用户任务后",
-		"必须向用户简短提示对应命令",
-		"两者同时出现就都提示",
-		"不要擅自执行",
+		"用户询问 Runtime",
+		"诊断场景忽略这些生命周期 notice",
+		"更新或同步仍需用户明确授权",
 		"_notice.update",
-		"vertc update",
 		"_notice.skills",
-		"vertc skills sync",
 		"冷缓存首次调用可能没有 notice",
 		"不代表已是最新版",
 		"不要为了等待 notice",
@@ -344,6 +403,9 @@ func TestSkillLifecycleNoticePolicy(t *testing.T) {
 		if !strings.Contains(skill, marker) {
 			t.Errorf("SKILL.md lifecycle policy missing %q", marker)
 		}
+	}
+	if strings.Contains(skill, "必须向用户简短提示对应命令") {
+		t.Error("SKILL.md must not force lifecycle notices into normal task answers")
 	}
 }
 
@@ -356,7 +418,7 @@ func TestSkillGracefullyHandlesMissingCLI(t *testing.T) {
 		"仍可继续文档咨询",
 		"不要把 CLI 缺失解释成 RTC",
 		"npm install -g @volcengine/rtc-cli",
-		"未经用户同意，不要主动安装 CLI",
+		"需要先征得用户同意",
 	} {
 		if !strings.Contains(skill, marker) {
 			t.Errorf("SKILL.md missing optional-CLI behavior %q", marker)
@@ -424,7 +486,8 @@ func TestSkillTemplateIncludesInvocationIdentityContract(t *testing.T) {
 // encodes the staged "AI 没回答" convergence and the acceptance scenarios, each
 // mappable to a domain / first-failure stage (spec skill-diagnosis-protocol).
 func TestIntegrationFlowCoversAcceptanceScenarios(t *testing.T) {
-	body := readSkillFile(t, filepath.Join("references", "integration-flow.md"))
+	body := readSkillFile(t, filepath.Join("references", "integration-flow.md")) + "\n" +
+		readSkillFile(t, filepath.Join("references", "integration-stages.md"))
 	markers := []string{
 		"StartVoiceChat",     // staged step 3
 		"Agent 进房",           // staged step 4

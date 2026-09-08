@@ -75,7 +75,7 @@ See [Voice-agent projects](./docs/voice-agent.md#english) for the generated layo
 | `dev [--web-port N] [--server-port N] [--auto-port]` | Configure RTC resources, check ports, and run the project |
 | `doctor [cli\|project]` | Check CLI and project readiness without changing the project |
 | `explain-error <code>` | Look up SDK and conversational-AI errors offline |
-| `docs search/fetch/list` | Search, fetch, or browse RTC documentation |
+| `docs search/fetch/list` | Search, fetch, or browse RTC documentation; `fetch --match` extracts matching sections/tables |
 | `skills list/read/sync` | Inspect or synchronize the official Skill embedded in the current release |
 | `update [--check\|--force]` | Check or update an npm-managed installation |
 

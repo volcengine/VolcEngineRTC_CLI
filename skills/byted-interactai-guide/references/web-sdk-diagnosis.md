@@ -7,20 +7,11 @@
 编排概念**，可被本 Skill 与未来纯 Web SDK 场景直接复用。跨域协作顺序见
 `references/integration-flow.md`。
 
-## 统一诊断结果协议
+## 诊断合同
 
-任何一次定位都按七字段产出，缺证据的阶段记为「证据缺失」而非「确认失败」：
-
-- `symptom` — 用户可见现象
-- `domain` — 本文所有结论固定为 `web-sdk`
-- `last_success` — 最后一个确认成功的阶段
-- `first_failure` — 首个失败或缺少证据的阶段
-- `evidence` — 事件回调 / 错误码 / 控制台日志 / 配置证据
-- `action` — 最小修复动作
-- `verification` — 修复后的验证方式
-
-错误码用 `vertc explain-error <code>` 反查含义与修复建议；CLI/配置类问题用
-`vertc doctor`（只读定位）。
+九字段输出、证据强度、标准观察、会话边界与首个故障算法见
+`references/integration-flow.md`。本文记录 `web-sdk` 域的媒体证据和处理动作。错误码用
+`vertc explain-error <code>`；CLI/配置类问题用 `vertc doctor`（只读定位）。
 
 ## 媒体链路阶段（本域）
 

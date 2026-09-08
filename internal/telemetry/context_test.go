@@ -25,6 +25,9 @@ func TestResolveInvocationContextPriority(t *testing.T) {
 		context.SkillName != "byted-interactai-guide" || context.SkillVersion != "1.0" {
 		t.Fatalf("ResolveInvocationContext() = %#v", context)
 	}
+	if !uuidPattern.MatchString(context.InvocationID) {
+		t.Fatalf("invocation ID = %q", context.InvocationID)
+	}
 }
 
 func TestResolveInvocationContextNativeCallers(t *testing.T) {
@@ -37,6 +40,7 @@ func TestResolveInvocationContextNativeCallers(t *testing.T) {
 		{map[string]string{"HERMES_AGENT_ID": "1"}, "hermes"},
 		{map[string]string{"COZE_CLAW_AGENT_ID": ""}, "coze-claw"},
 		{map[string]string{"TRAE_CLI_PLUGIN_ROOT": "/tmp/plugin"}, "trae"},
+		{map[string]string{"DOUBAO_OFFICE_PRESENT": ""}, "doubao-office"},
 		{map[string]string{"AI_AGENT": " TRAE "}, "trae"},
 		{map[string]string{"CLAUDECODE": "1"}, "claude-code"},
 		{map[string]string{"CLAUDE_CODE": "1", "CLAUDE_CODE_IS_COWORK": "1"}, "claude-cowork"},
@@ -62,26 +66,31 @@ func TestResolveInvocationContextNativeCallers(t *testing.T) {
 	}
 }
 
-func TestResolveInvocationContextCustomAndAmbiguousCallers(t *testing.T) {
+func TestResolveInvocationContextCustomAndPrioritizedCallers(t *testing.T) {
 	custom := ResolveInvocationContext(baseOptions(map[string]string{
-		"AI_AGENT": " custom-agent ", "OPENCLAW_SESSION_ID": "1", "CLAUDECODE": "1",
+		"AI_AGENT": " Custom.Agent ", "OPENCLAW_SESSION_ID": "1", "CLAUDECODE": "1",
 	}))
-	if custom.CallerName != "openclaw,custom-agent" {
+	if custom.CallerName != "openclaw,Custom.Agent" {
 		t.Fatalf("custom caller = %q", custom.CallerName)
 	}
 
-	ambiguous := ResolveInvocationContext(baseOptions(map[string]string{
+	prioritizedOuter := ResolveInvocationContext(baseOptions(map[string]string{
 		"OPENCLAW_SESSION_ID": "1", "ARKCLAW_RUN_ID": "1", "CLAUDECODE": "1",
 	}))
-	if ambiguous.CallerName != "claude-code" {
-		t.Fatalf("ambiguous caller = %q", ambiguous.CallerName)
+	if prioritizedOuter.CallerName != "openclaw,claude-code" {
+		t.Fatalf("prioritized outer caller = %q", prioritizedOuter.CallerName)
 	}
 
-	innerAmbiguous := ResolveInvocationContext(baseOptions(map[string]string{
+	prioritizedInner := ResolveInvocationContext(baseOptions(map[string]string{
 		"CLAUDECODE": "1", "CODEX_THREAD_ID": "thread",
 	}))
-	if innerAmbiguous.InvocationType != InvocationTypeUnknown || innerAmbiguous.CallerName != UnknownValue {
-		t.Fatalf("inner ambiguous context = %#v", innerAmbiguous)
+	if prioritizedInner.InvocationType != InvocationTypeDirect || prioritizedInner.CallerName != "claude-code" {
+		t.Fatalf("prioritized inner context = %#v", prioritizedInner)
+	}
+
+	identity := ResolveInvocationContext(baseOptions(map[string]string{"IDENTITY_NAME": "custom-runtime"}))
+	if identity.CallerName != "custom-runtime" {
+		t.Fatalf("identity caller = %q", identity.CallerName)
 	}
 }
 

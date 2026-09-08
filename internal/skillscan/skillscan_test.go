@@ -40,6 +40,7 @@ func TestValidateAcceptsRealCommands(t *testing.T) {
 		{Raw: "vertc agent start --dry-run", Args: []string{"agent", "start", "--dry-run"}},
 		{Raw: "vertc token issue --room-id room-2 --write", Args: []string{"token", "issue", "--room-id", "room-2", "--write"}},
 		{Raw: "vertc token issue --format json", Args: []string{"token", "issue", "--format", "json"}},
+		{Raw: "vertc agent start --yes -- -value", Args: []string{"agent", "start", "--yes", "--", "-value"}},
 	}
 	problems, unver := Validate(testTree(), cmds)
 	if len(problems) != 0 || len(unver) != 0 {

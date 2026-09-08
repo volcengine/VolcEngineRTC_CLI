@@ -31,6 +31,7 @@ const (
 	maxAttempts       = 3
 	maxRetryAfter     = 5 * time.Second
 	maxBackoff        = 2 * time.Second
+	maxToolLines      = 100_000
 	requestIDHeader   = "x-tt-logid"
 	sessionIDHeader   = "MCP-Session-Id"
 	contentTypeJSON   = "application/json"
@@ -186,7 +187,7 @@ func (c *Client) commandContext(parent context.Context) (context.Context, contex
 	return context.WithTimeout(parent, commandTimeout)
 }
 
-func (c *Client) prepare(ctx context.Context, tool string) error {
+func (c *Client) prepare(ctx context.Context, tool string) (toolSchema, error) {
 	var initialized initializeResult
 	if err := c.rpc(ctx, "initialize", map[string]any{
 		"protocolVersion": OfferedProtocol,
@@ -195,10 +196,10 @@ func (c *Client) prepare(ctx context.Context, tool string) error {
 			"name": meta.UserAgentProduct, "version": c.version,
 		},
 	}, lifecycleTimeout, &initialized); err != nil {
-		return err
+		return toolSchema{}, err
 	}
 	if initialized.ProtocolVersion != OfferedProtocol && initialized.ProtocolVersion != LegacyProtocol {
-		return errs.New("vertc.docs.unsupported_protocol", errs.TypePrecondition,
+		return toolSchema{}, errs.New("vertc.docs.unsupported_protocol", errs.TypePrecondition,
 			"RTC documentation MCP negotiated an unsupported protocol version").
 			WithDetails(map[string]any{"protocol_version": initialized.ProtocolVersion})
 	}
@@ -208,13 +209,22 @@ func (c *Client) prepare(ctx context.Context, tool string) error {
 		ServerVersion:   initialized.ServerInfo.Version,
 	}
 	if err := c.notify(ctx, "notifications/initialized", map[string]any{}, lifecycleTimeout); err != nil {
-		return err
+		return toolSchema{}, err
 	}
 	var listed toolsListResult
 	if err := c.rpc(ctx, "tools/list", map[string]any{}, lifecycleTimeout, &listed); err != nil {
-		return err
+		return toolSchema{}, err
 	}
-	return validateTool(listed.Tools, tool)
+	if err := validateTool(listed.Tools, tool); err != nil {
+		return toolSchema{}, err
+	}
+	for _, listedTool := range listed.Tools {
+		if listedTool.Name == tool {
+			return listedTool.InputSchema, nil
+		}
+	}
+	return toolSchema{}, errs.New("vertc.docs.tool_unavailable", errs.TypePrecondition,
+		"required RTC documentation tool is unavailable").WithDetails(map[string]any{"tool": tool})
 }
 
 func validateTool(tools []toolDescription, name string) error {
@@ -236,21 +246,25 @@ func validateTool(tools []toolDescription, name string) error {
 	}
 	switch name {
 	case "search_docs":
-		if len(schema.Properties) != 1 || schema.Properties["query"].Type != "string" {
+		if !compatibleProperties(schema.Properties, map[string]string{"query": "string"}, nil) {
 			return schemaChanged(name)
 		}
 		if !compatibleRequired(schema.Required, "query") {
 			return schemaChanged(name)
 		}
 	case "fetch_doc":
-		if len(schema.Properties) != 1 || schema.Properties["id"].Type != "string" {
+		if !compatibleProperties(schema.Properties, map[string]string{"id": "string"}, map[string]string{
+			"line_offset": "integer", "line_limit": "integer",
+		}) {
 			return schemaChanged(name)
 		}
 		if !compatibleRequired(schema.Required, "id") {
 			return schemaChanged(name)
 		}
 	case "list_docs":
-		if len(schema.Properties) != 0 || len(schema.Required) != 0 {
+		if !compatibleProperties(schema.Properties, nil, map[string]string{
+			"line_offset": "integer", "line_limit": "integer", "grep": "string",
+		}) || len(schema.Required) != 0 {
 			return schemaChanged(name)
 		}
 	default:
@@ -258,6 +272,52 @@ func validateTool(tools []toolDescription, name string) error {
 			"unsupported RTC documentation tool").WithDetails(map[string]any{"tool": name})
 	}
 	return nil
+}
+
+func compatibleProperties(properties map[string]schemaProperty, required, optional map[string]string) bool {
+	if len(properties) < len(required) || len(properties) > len(required)+len(optional) {
+		return false
+	}
+	for name, wantType := range required {
+		if properties[name].Type != wantType {
+			return false
+		}
+	}
+	for name, property := range properties {
+		wantType, ok := required[name]
+		if !ok {
+			wantType, ok = optional[name]
+		}
+		if !ok || property.Type != wantType {
+			return false
+		}
+	}
+	return true
+}
+
+func stripCompleteDocumentMarker(text string) (string, error) {
+	const marker = "\n<<<END_OF_DOCUMENT>>>"
+	if !strings.HasSuffix(text, marker) {
+		return "", errs.New("vertc.docs.protocol_error", errs.TypeIO,
+			"RTC documentation tool returned an incomplete paginated document")
+	}
+	text = strings.TrimSuffix(text, marker)
+	const pagePrefix = "\n<<<PAGE_INFO total_lines="
+	if offset := strings.LastIndex(text, pagePrefix); offset >= 0 {
+		const pageSuffix = " has_more=false next_line_offset=none>>>"
+		pageInfo := text[offset+len(pagePrefix):]
+		if !strings.HasSuffix(pageInfo, pageSuffix) {
+			return "", errs.New("vertc.docs.protocol_error", errs.TypeIO,
+				"RTC documentation tool returned invalid page metadata")
+		}
+		totalLines := strings.TrimSuffix(pageInfo, pageSuffix)
+		if parsed, err := strconv.Atoi(totalLines); err != nil || parsed < 0 {
+			return "", errs.New("vertc.docs.protocol_error", errs.TypeIO,
+				"RTC documentation tool returned invalid page metadata")
+		}
+		text = text[:offset]
+	}
+	return text, nil
 }
 
 func compatibleRequired(required []string, expected string) bool {

@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -100,11 +101,8 @@ func TestMain(m *testing.M) {
 }
 
 func serveTopicDocsFixture(w http.ResponseWriter, r *http.Request) {
-	allowedUserAgents := map[string]bool{
-		"vertc/0.0.1-dev invocation/direct caller/e2e":                                   true,
-		"vertc/0.0.1-dev invocation/skill caller/e2e skill/byted-interactai-guide#0.0.4": true,
-	}
-	if !allowedUserAgents[r.UserAgent()] {
+	allowedUserAgent := regexp.MustCompile(`^vertc/0\.0\.1-dev invocation/(?:direct caller/e2e|skill caller/e2e skill/byted-interactai-guide#0\.0\.4) invocation-id/[0-9a-f-]{36}$`)
+	if !allowedUserAgent.MatchString(r.UserAgent()) {
 		http.Error(w, "unexpected user agent", http.StatusForbidden)
 		return
 	}
@@ -406,6 +404,15 @@ func TestExplainErrorKnownAndUnknown(t *testing.T) {
 	r = run(t, dir, nil, "explain-error", "TOTALLY_MADE_UP")
 	if r.code == 0 {
 		t.Fatal("expected non-zero for unknown code")
+	}
+	// A negative code must remain positional after the argument terminator.
+	r = run(t, dir, nil, "explain-error", "--format", "json", "--", "-1000")
+	if r.code == 0 {
+		t.Fatal("expected unknown negative code to return non-zero")
+	}
+	data, _ = r.envelope(t)["data"].(map[string]any)
+	if data["query"] != "-1000" || data["found"] != false {
+		t.Fatalf("negative code was not parsed as data: %v", data)
 	}
 }
 

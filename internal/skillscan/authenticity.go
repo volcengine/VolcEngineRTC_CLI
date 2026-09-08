@@ -69,6 +69,9 @@ func validateOne(root *cobra.Command, c Command) (Problem, bool, bool) {
 	// Validate the remaining tokens as flags (skipping their values / positionals).
 	for j := idx; j < len(c.Args); j++ {
 		tok := c.Args[j]
+		if tok == "--" {
+			break // standard end-of-flags marker; remaining tokens are positional
+		}
 		if strings.HasPrefix(tok, "--") {
 			name, _, hasEq := cutFlag(tok)
 			if name == "help" {

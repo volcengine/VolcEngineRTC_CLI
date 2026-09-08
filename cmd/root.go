@@ -99,6 +99,9 @@ func NewRootCmd() *cobra.Command {
 		"output format: json|pretty|table (default: pretty in a terminal, json otherwise)")
 	root.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false,
 		"preview side effects without applying them")
+	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		return commandSyntaxError(c, "flags", err)
+	})
 
 	// Register the supported subcommands.
 	root.AddCommand(
@@ -117,7 +120,35 @@ func NewRootCmd() *cobra.Command {
 		newSkillsCmd(),
 		newDocsCmd(),
 	)
+	attachArgumentSyntaxHints(root)
 	return root
+}
+
+func attachArgumentSyntaxHints(cmd *cobra.Command) {
+	if cmd.Args != nil {
+		validate := cmd.Args
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			err := validate(c, args)
+			if err == nil {
+				return nil
+			}
+			if _, ok := errs.As(err); ok {
+				return err
+			}
+			return commandSyntaxError(c, "arguments", err)
+		}
+	}
+	for _, child := range cmd.Commands() {
+		attachArgumentSyntaxHints(child)
+	}
+}
+
+func commandSyntaxError(cmd *cobra.Command, param string, err error) error {
+	usage := cmd.UseLine()
+	return errs.New("vertc.cli.invalid_flag", errs.TypeValidation, "%s", err.Error()).
+		WithParam(param).
+		WithDetails(map[string]any{"usage": usage}).
+		WithHint("use `%s`; run `%s --help` for full parameter help", usage, cmd.CommandPath())
 }
 
 func isProjectIndependentCommand(c *cobra.Command) bool {

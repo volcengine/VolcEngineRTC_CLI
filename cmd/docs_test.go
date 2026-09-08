@@ -117,6 +117,77 @@ func TestDocsFetchPrettyIsExactMarkdown(t *testing.T) {
 	}
 }
 
+func TestDocsFetchMatchReturnsExcerptWithFullDocumentMetadata(t *testing.T) {
+	markdown := "# Doc\n\n## Scope\n\n2025-06-01.\n\n## Provider\n\nProvider details.\n\n## Other\n\nSkip.\n"
+	fake := &fakeTopicDocsClient{fetchResult: topicdocs.FetchResult{
+		Provider: topicdocs.Provider, ID: "doc-1", ContentType: "text/markdown",
+		Bytes: len([]byte(markdown)), SHA256: "full-sha", Content: markdown,
+		MCP: topicdocs.MCPMeta{ServerName: "docs", ServerVersion: "1"},
+	}}
+	stdout, stderr, err := runDocsCommand(t, fake, output.FormatJSON,
+		"fetch", "doc-1", "--match", "Provider", "--match", "2025-06-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stderr != "" || fake.fetchID != "doc-1" || fake.closed != 1 {
+		t.Fatalf("stderr=%q fake=%#v", stderr, fake)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := envelope["data"].(map[string]any)
+	if _, exists := data["content"]; exists {
+		t.Fatalf("matched response leaked full content: %#v", data)
+	}
+	if data["id"] != "doc-1" || data["bytes"] != float64(len([]byte(markdown))) || data["sha256"] != "full-sha" || data["complete"] != true || data["truncated"] != false {
+		t.Fatalf("matched metadata = %#v", data)
+	}
+	excerpt, _ := data["excerpt"].(string)
+	if !strings.Contains(excerpt, "## Scope") || !strings.Contains(excerpt, "## Provider") || strings.Contains(excerpt, "## Other") {
+		t.Fatalf("excerpt = %q", excerpt)
+	}
+}
+
+func TestDocsFetchWithoutMatchKeepsJSONContract(t *testing.T) {
+	markdown := "# Exact\n"
+	fake := &fakeTopicDocsClient{fetchResult: topicdocs.FetchResult{
+		Provider: topicdocs.Provider, ID: "doc-1", ContentType: "text/markdown",
+		Bytes: len(markdown), SHA256: "full-sha", Content: markdown,
+	}}
+	stdout, _, err := runDocsCommand(t, fake, output.FormatJSON, "fetch", "doc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := envelope["data"].(map[string]any)
+	for _, key := range []string{"provider", "id", "content_type", "bytes", "sha256", "content", "mcp"} {
+		if _, ok := data[key]; !ok {
+			t.Errorf("unmatched response missing %q: %#v", key, data)
+		}
+	}
+	for _, key := range []string{"excerpt", "excerpt_bytes", "match_terms", "match_count", "complete", "truncated"} {
+		if _, ok := data[key]; ok {
+			t.Errorf("unmatched response added %q: %#v", key, data)
+		}
+	}
+}
+
+func TestDocsFetchMatchPrettyWritesOnlyExcerpt(t *testing.T) {
+	markdown := "# Doc\n\n## Provider\n\nkeep\n\n## Other\n\nskip\n"
+	fake := &fakeTopicDocsClient{fetchResult: topicdocs.FetchResult{Content: markdown}}
+	stdout, stderr, err := runDocsCommand(t, fake, output.FormatPretty, "fetch", "doc-1", "--match", "keep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stderr != "" || !strings.Contains(stdout, "## Provider") || strings.Contains(stdout, "## Other") {
+		t.Fatalf("stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
 func TestDocsListFlagsAndTableOutput(t *testing.T) {
 	next := 7
 	fake := &fakeTopicDocsClient{listResult: topicdocs.ListResult{
@@ -157,11 +228,20 @@ func TestDocsArgumentAndClientErrorsRemainTyped(t *testing.T) {
 	fake := &fakeTopicDocsClient{}
 	_, _, err := runDocsCommand(t, fake, output.FormatJSON, "fetch")
 	typed := assertDocsCommandCode(t, err, "vertc.docs.invalid_argument")
-	if typed.Param != "doc-id" {
-		t.Fatalf("error param = %q", typed.Param)
+	if typed.Param != "doc-id" || typed.Details["usage"] == "" || typed.Details["example"] == "" ||
+		!strings.Contains(typed.Hint, "docs fetch <doc-id>") {
+		t.Fatalf("error = %#v", typed)
 	}
 	if fake.closed != 0 {
 		t.Fatal("client must not be created for invalid positional arguments")
+	}
+
+	invalid := &fakeTopicDocsClient{err: errs.New("vertc.docs.invalid_argument", errs.TypeValidation,
+		"search limit must be between 1 and 50").WithParam("--limit")}
+	_, _, err = runDocsCommand(t, invalid, output.FormatJSON, "search", "rtc", "--limit", "99")
+	typed = assertDocsCommandCode(t, err, "vertc.docs.invalid_argument")
+	if !strings.Contains(typed.Hint, `docs search "<query>"`) || typed.Details["example"] == nil {
+		t.Fatalf("decorated client error = %#v", typed)
 	}
 
 	fake.err = errs.New("vertc.docs.tool_unavailable", errs.TypePrecondition, "unavailable").
@@ -170,6 +250,28 @@ func TestDocsArgumentAndClientErrorsRemainTyped(t *testing.T) {
 	typed = assertDocsCommandCode(t, err, "vertc.docs.tool_unavailable")
 	if typed.Details["tool"] != "search_docs" || fake.closed != 1 {
 		t.Fatalf("error=%#v closed=%d", typed, fake.closed)
+	}
+}
+
+func TestDocsSyntaxErrorsExplainArgumentPlacement(t *testing.T) {
+	fake := &fakeTopicDocsClient{}
+	for _, tc := range []struct {
+		args  []string
+		param string
+		want  string
+	}{
+		{[]string{"search", "--query", "rtc"}, "flags", `docs search "<query>"`},
+		{[]string{"fetch", "--url", "https://example.com"}, "flags", "docs fetch <doc-id>"},
+		{[]string{"list", "audio"}, "arguments", `docs list [--query "<text>"]`},
+	} {
+		_, _, err := runDocsCommand(t, fake, output.FormatJSON, tc.args...)
+		typed := assertDocsCommandCode(t, err, "vertc.docs.invalid_argument")
+		if typed.Param != tc.param || !strings.Contains(typed.Hint, tc.want) || typed.Details["example"] == "" {
+			t.Errorf("args=%v error=%#v", tc.args, typed)
+		}
+	}
+	if fake.closed != 0 {
+		t.Fatal("client must not be created for invalid command syntax")
 	}
 }
 

@@ -187,6 +187,26 @@ func TestUnknownCommandErrorIsTypedAndActionable(t *testing.T) {
 	}
 }
 
+func TestCommandSyntaxErrorsIncludeLeafUsage(t *testing.T) {
+	for _, tc := range []struct {
+		args  []string
+		param string
+		want  string
+	}{
+		{[]string{"doctor", "--bogus"}, "flags", "vertc doctor"},
+		{[]string{"explain-error"}, "arguments", "vertc explain-error <code>"},
+	} {
+		root := NewRootCmd()
+		root.SetArgs(tc.args)
+		err := root.Execute()
+		typed, ok := errs.As(err)
+		if !ok || typed.Code != "vertc.cli.invalid_flag" || typed.Param != tc.param ||
+			!strings.Contains(typed.Hint, tc.want) || !strings.Contains(typed.Details["usage"].(string), tc.want) {
+			t.Errorf("args=%v error=%#v", tc.args, err)
+		}
+	}
+}
+
 type plainError struct{ message string }
 
 func (e *plainError) Error() string { return e.message }

@@ -429,7 +429,10 @@ func TestAuthenticatedOpenAPIClientUsesInvocationUserAgent(t *testing.T) {
 	})
 
 	client := newAuthenticatedOpenAPIClient(nil)
-	want := "vertc/1.2.3 invocation/skill skill/byted-interactai-guide#0.0.1"
+	want, ok := telemetry.GetInvocationUserAgent()
+	if !ok {
+		t.Fatal("invocation user agent was not generated")
+	}
 	if client.UserAgent != want {
 		t.Fatalf("user agent = %q, want %q", client.UserAgent, want)
 	}

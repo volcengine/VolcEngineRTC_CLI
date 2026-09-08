@@ -7,12 +7,11 @@ ASR/VAD/LLM/TTS 链路与字幕事件。RTC 媒体侧问题（进房/采集/发�
 本文，见 `references/web-sdk-diagnosis.md`；跨域顺序见
 `references/integration-flow.md`。VoiceChat OpenAPI 字段见 `references/voicechat-api.md`。
 
-## 统一诊断结果协议
+## 诊断合同
 
-- `symptom` / `domain`（本文固定 `voice-agent`）/ `last_success` / `first_failure`
-  / `evidence` / `action` / `verification`
-- 缺证据的阶段记为「证据缺失」，不直接判为「确认失败」。
-- 错误码用 `vertc explain-error <code>` 反查含义与修复建议。
+九字段输出、证据强度、标准观察、会话边界与首个故障算法见
+`references/integration-flow.md`。本文记录 `voice-agent` 域各阶段的证据和处理动作。错误码用
+`vertc explain-error <code>` 查询含义与修复建议。
 
 > **错误码可信状态提醒**：`vertc explain-error` 会为每个条目返回 `source` 和
 > `verified`。VoiceChat 对话运行态与 RTC OpenAPI 公共错误码已经过官方文档核验；

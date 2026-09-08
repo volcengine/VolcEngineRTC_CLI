@@ -39,7 +39,7 @@ func (c *Client) Search(parent context.Context, query string, limit int) (Search
 	}
 	ctx, cancel := c.commandContext(parent)
 	defer cancel()
-	if err := c.prepare(ctx, "search_docs"); err != nil {
+	if _, err := c.prepare(ctx, "search_docs"); err != nil {
 		return SearchResult{}, err
 	}
 	text, err := c.callTool(ctx, "search_docs", map[string]any{"query": query})
@@ -110,12 +110,24 @@ func (c *Client) Fetch(parent context.Context, id string) (FetchResult, error) {
 	}
 	ctx, cancel := c.commandContext(parent)
 	defer cancel()
-	if err := c.prepare(ctx, "fetch_doc"); err != nil {
-		return FetchResult{}, err
-	}
-	text, err := c.callTool(ctx, "fetch_doc", map[string]any{"id": id})
+	schema, err := c.prepare(ctx, "fetch_doc")
 	if err != nil {
 		return FetchResult{}, err
+	}
+	arguments := map[string]any{"id": id}
+	_, paginated := schema.Properties["line_limit"]
+	if paginated {
+		arguments["line_limit"] = maxToolLines
+	}
+	text, err := c.callTool(ctx, "fetch_doc", arguments)
+	if err != nil {
+		return FetchResult{}, err
+	}
+	if paginated {
+		text, err = stripCompleteDocumentMarker(text)
+		if err != nil {
+			return FetchResult{}, err
+		}
 	}
 	sum := sha256.Sum256([]byte(text))
 	return FetchResult{
@@ -136,12 +148,24 @@ func (c *Client) List(parent context.Context, query string, offset, limit int) (
 	}
 	ctx, cancel := c.commandContext(parent)
 	defer cancel()
-	if err := c.prepare(ctx, "list_docs"); err != nil {
-		return ListResult{}, err
-	}
-	text, err := c.callTool(ctx, "list_docs", map[string]any{})
+	schema, err := c.prepare(ctx, "list_docs")
 	if err != nil {
 		return ListResult{}, err
+	}
+	arguments := map[string]any{}
+	_, paginated := schema.Properties["line_limit"]
+	if paginated {
+		arguments["line_limit"] = maxToolLines
+	}
+	text, err := c.callTool(ctx, "list_docs", arguments)
+	if err != nil {
+		return ListResult{}, err
+	}
+	if paginated {
+		text, err = stripCompleteDocumentMarker(text)
+		if err != nil {
+			return ListResult{}, err
+		}
 	}
 	documents, err := parseIndex(text)
 	if err != nil {

@@ -74,6 +74,28 @@ type FetchResult struct {
 // Pretty writes the fetched Markdown directly for terminal consumption.
 func (r FetchResult) Pretty(w io.Writer) { fmt.Fprint(w, r.Content) }
 
+// FetchExcerptResult is a local excerpt over one full fetched document. Bytes
+// and SHA256 still identify the full document; Excerpt is the only Markdown
+// body emitted when docs fetch uses --match.
+type FetchExcerptResult struct {
+	Provider     string   `json:"provider"`
+	ID           string   `json:"id"`
+	ContentType  string   `json:"content_type"`
+	Bytes        int      `json:"bytes"`
+	SHA256       string   `json:"sha256"`
+	Excerpt      string   `json:"excerpt"`
+	ExcerptBytes int      `json:"excerpt_bytes"`
+	MatchTerms   []string `json:"match_terms"`
+	MatchedTerms []string `json:"matched_terms"`
+	MatchCount   int      `json:"match_count"`
+	Complete     bool     `json:"complete"`
+	Truncated    bool     `json:"truncated"`
+	MCP          MCPMeta  `json:"mcp"`
+}
+
+// Pretty writes only the matched Markdown excerpt.
+func (r FetchExcerptResult) Pretty(w io.Writer) { fmt.Fprint(w, r.Excerpt) }
+
 // Document is one parsed list_docs index entry.
 type Document struct {
 	ID      string `json:"id"`

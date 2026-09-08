@@ -15,6 +15,7 @@ const (
 )
 
 var productPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func isValidSemver(value string) bool {
 	if !semverPattern.MatchString(value) {
@@ -52,7 +53,7 @@ func validCallerChain(value string) bool {
 		return false
 	}
 	for _, part := range parts {
-		if normalizeStableName(part) == "" {
+		if normalizeCallerName(part) == "" {
 			return false
 		}
 	}
@@ -60,27 +61,42 @@ func validCallerChain(value string) bool {
 }
 
 func BuildInvocationUserAgent(context *InvocationContext) (string, bool) {
-	if context == nil || !productPattern.MatchString(context.CLIName) || !isValidVersion(context.CLIVersion) || !validInvocationType(context.InvocationType) {
+	if context == nil || !productPattern.MatchString(context.CLIName) || !isValidVersion(context.CLIVersion) || !uuidPattern.MatchString(context.InvocationID) || !validInvocationType(context.InvocationType) {
 		return "", false
 	}
 	required := context.CLIName + "/" + context.CLIVersion + " invocation/" + string(context.InvocationType)
-	optional := make([]string, 0, 2)
+	invocationSegment := "invocation-id/" + context.InvocationID
+	caller := ""
 	if context.CallerName != UnknownValue && validCallerChain(context.CallerName) {
-		optional = append(optional, "caller/"+strings.ReplaceAll(context.CallerName, ",", "+"))
+		caller = "caller/" + strings.ReplaceAll(context.CallerName, ",", "+")
 	}
+	skill, skillWithoutVersion := "", ""
 	if context.SkillName != UnknownValue && normalizeStableName(context.SkillName) != "" {
-		skillSegment := "skill/" + context.SkillName
+		skillWithoutVersion = "skill/" + context.SkillName
+		skill = skillWithoutVersion
 		if context.SkillVersion != UnknownValue && isValidSkillVersion(context.SkillVersion) {
-			skillSegment += "#" + context.SkillVersion
+			skill += "#" + context.SkillVersion
 		}
-		optional = append(optional, skillSegment)
 	}
-	userAgent := strings.Join(append([]string{required}, optional...), " ")
-	if len(userAgent) <= maxUserAgentLength {
+	compose := func() string {
+		return strings.Join(removeEmpty(required, caller, skill, invocationSegment), " ")
+	}
+	if userAgent := compose(); len(userAgent) <= maxUserAgentLength {
 		return userAgent, true
 	}
-	if len(required) <= maxUserAgentLength {
-		return required, true
+	if skill != skillWithoutVersion {
+		skill = skillWithoutVersion
+		if userAgent := compose(); len(userAgent) <= maxUserAgentLength {
+			return userAgent, true
+		}
+	}
+	caller = ""
+	if userAgent := compose(); len(userAgent) <= maxUserAgentLength {
+		return userAgent, true
+	}
+	skill = ""
+	if userAgent := compose(); len(userAgent) <= maxUserAgentLength {
+		return userAgent, true
 	}
 	return "", false
 }

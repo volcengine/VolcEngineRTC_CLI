@@ -3,7 +3,7 @@
 [![CI](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/volcengine/VolcEngineRTC_CLI/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/volcengine/VolcEngineRTC_CLI?label=release)](https://github.com/volcengine/VolcEngineRTC_CLI/releases)
 [![npm](https://img.shields.io/npm/v/@volcengine/rtc-cli?label=npm)](https://www.npmjs.com/package/@volcengine/rtc-cli)
-[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.25.12-00ADD8?logo=go)](./go.mod)
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.25.13-00ADD8?logo=go)](./go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 [English](./README.en.md) | 简体中文
@@ -29,7 +29,7 @@ vertc version
 
 ### 本地编译
 
-需要 Go 1.25.12 或更高版本：
+需要 Go 1.25.13 或更高版本：
 
 ```bash
 git clone https://github.com/volcengine/VolcEngineRTC_CLI.git

@@ -1,7 +1,7 @@
 ---
 name: byted-interactai-guide
 description: 解释火山 AI 音视频互动的产品能力、适用边界与最新官方文档；生成或修改 VoiceChat/Aibot 配置；并帮助用户搭建、运行和分阶段排查最小 InteractAI VoiceChat Web Demo。
-version: "0.0.6"
+version: "0.0.7"
 ---
 
 # InteractAI Guide — 能力、配置、接入与排障薄路由

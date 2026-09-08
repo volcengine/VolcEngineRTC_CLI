@@ -23,7 +23,7 @@ npm install -g @volcengine/rtc-cli
 vertc version --format pretty
 ```
 
-如果 npm 包安装成功，但二进制下载失败，请检查是否能访问 GitHub Releases。也可以使用 Go 1.25.12 或更高版本从源码构建：
+如果 npm 包安装成功，但二进制下载失败，请检查是否能访问 GitHub Releases。也可以使用 Go 1.25.13 或更高版本从源码构建：
 
 ```bash
 git clone https://github.com/volcengine/VolcEngineRTC_CLI.git
@@ -122,7 +122,7 @@ vertc version --format pretty
 ```
 
 If the package install completed but its binary download failed, verify access
-to GitHub Releases. A source build with Go 1.25.12 or later is an alternative:
+to GitHub Releases. A source build with Go 1.25.13 or later is an alternative:
 
 ```bash
 git clone https://github.com/volcengine/VolcEngineRTC_CLI.git

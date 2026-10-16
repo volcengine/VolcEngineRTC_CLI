@@ -8,6 +8,8 @@ package topicdocs
 import (
 	"fmt"
 	"io"
+
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 const (
@@ -17,7 +19,7 @@ const (
 	MaxResponseBytes   int64 = 2 << 20
 	MaxSearchLimit           = 50
 	MaxListLimit             = 100
-	productionEndpoint       = "https://topic.bytedance.com/mcp/rtc"
+	ProductionEndpoint       = product.DefaultDocsMCPEndpoint
 )
 
 // MCPMeta identifies the negotiated service contract for one command.

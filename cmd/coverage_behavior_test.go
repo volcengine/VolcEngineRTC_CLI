@@ -114,6 +114,19 @@ func TestExplainErrorCommandCoversKnownAndUnknownCodes(t *testing.T) {
 	if !strings.Contains(output, `"found": false`) || !strings.Contains(output, `"query": "NOT_A_REAL_CODE"`) {
 		t.Fatalf("unknown code output=%s", output)
 	}
+	if !strings.Contains(output, `docs search -- 'NOT_A_REAL_CODE'`) || !strings.Contains(output, "doctor") {
+		t.Fatalf("unknown code output lacks docs/doctor recovery: %s", output)
+	}
+
+	help := newExplainErrorCmd()
+	var helpOutput strings.Builder
+	help.SetOut(&helpOutput)
+	if err := help.Help(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(helpOutput.String(), "vertc explain-error -- -1000") {
+		t.Fatalf("negative-code example missing from help: %s", helpOutput.String())
+	}
 }
 
 func TestEmitTemplateListUsesRegistry(t *testing.T) {
@@ -121,7 +134,7 @@ func TestEmitTemplateListUsesRegistry(t *testing.T) {
 	t.Cleanup(func() { flagFormat = oldFormat })
 	flagFormat = "json"
 	output := captureCommandStdout(t, emitTemplateList)
-	for _, want := range []string{`"scene": "voice-agent"`, `"platform": "web"`, `"available": true`, `"sdk": "@volcengine/rtc@4.68.1"`} {
+	for _, want := range []string{`"scene": "voice-agent"`, `"platform": "web"`, `"available": true`, `"sdk": "@volcengine/rtc@4.69.3"`} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("template list output missing %q: %s", want, output)
 		}

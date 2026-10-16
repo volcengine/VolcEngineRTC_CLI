@@ -137,6 +137,9 @@ func TestSelectionRequiredDetailsExposeOnlyPublicMetadata(t *testing.T) {
 			t.Fatalf("selection details leaked %q: %s", forbidden, raw)
 		}
 	}
+	if !strings.Contains(err.Hint, "vertc dev --bot-id <id>") || strings.Contains(err.Hint, "--app-id") {
+		t.Fatalf("bot-only retry hint changed without an AppID: %q", err.Hint)
+	}
 }
 
 func TestExplicitResourceSelectorsValidateIDsAndOrder(t *testing.T) {
@@ -175,8 +178,8 @@ func TestBootstrapNonInteractiveReturnsBotCandidatesBeforeAppKey(t *testing.T) {
 		apps: []openapi.RtcApp{{AppID: "app", Status: "1"}},
 		bots: []openapi.Bot{{ID: "bot", Name: "Bot"}},
 	}
-	newDevConsoleClient = func(*config.Config) devConsoleClient {
-		return fake
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) {
+		return fake, nil
 	}
 	rtcInputIsTerminal = func(io.Reader) bool { return false }
 	t.Cleanup(func() {
@@ -197,6 +200,9 @@ func TestBootstrapNonInteractiveReturnsBotCandidatesBeforeAppKey(t *testing.T) {
 	}
 	if strings.Contains(typed.Hint, "--app-key") {
 		t.Fatalf("hint exposed AppKey argument: %q", typed.Hint)
+	}
+	if !strings.Contains(typed.Hint, "vertc dev --app-id app --bot-id <id>") {
+		t.Fatalf("hint does not preserve selected AppID: %q", typed.Hint)
 	}
 }
 
@@ -221,7 +227,7 @@ func TestBootstrapZeroBotsUsesAndPersistsDefaultScene(t *testing.T) {
 		appKey: "secret",
 	}
 	oldFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return false }
 	t.Cleanup(func() {
 		newDevConsoleClient = oldFactory
@@ -265,7 +271,7 @@ func TestBootstrapReusesPersistedBotSceneWithoutQuery(t *testing.T) {
 	t.Setenv("RTC_APP_KEY", "existing-key")
 	fake := &fakeRTCAppClient{}
 	oldFactory := newDevConsoleClient
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	t.Cleanup(func() { newDevConsoleClient = oldFactory })
 
 	restore, err := bootstrapDevRTCAppCredentials(context.Background(), cfg, dir, strings.NewReader(""), &bytes.Buffer{})
@@ -292,7 +298,7 @@ func TestBootstrapBotQueryFailureDoesNotUseDefault(t *testing.T) {
 	t.Setenv("RTC_APP_KEY", "existing-key")
 	fake := &fakeRTCAppClient{botErr: errs.New("vertc.openapi.request_failed", errs.TypeIO, "query failed")}
 	oldFactory := newDevConsoleClient
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	t.Cleanup(func() { newDevConsoleClient = oldFactory })
 
 	_, err := bootstrapDevRTCAppCredentials(context.Background(), cfg, dir, strings.NewReader(""), &bytes.Buffer{})
@@ -356,7 +362,7 @@ func TestBootstrapRTCAppCredentialsSelectsFetchesAndWritesEnv(t *testing.T) {
 		appKey: "selected-secret",
 	}
 	oldFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return true }
 	t.Cleanup(func() {
 		newDevConsoleClient = oldFactory
@@ -410,7 +416,7 @@ func TestBootstrapRTCAppCredentialsOnlyOffersActiveApps(t *testing.T) {
 		appKey: "selected-secret",
 	}
 	oldFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return true }
 	t.Cleanup(func() {
 		newDevConsoleClient = oldFactory
@@ -507,7 +513,7 @@ func TestBootstrapDevRTCAppCredentialsWritesBotScenesWithoutChangingDefault(t *t
 			{ID: "two", Name: "Second bot", Config: json.RawMessage(`{"ASRConfig":{"Provider":"volcano","ProviderParams":{}},"LLMConfig":{"Mode":"ArkV3","EndPointId":"ep-test"},"TTSConfig":{"Provider":"volcano","ProviderParams":{}}}`), AgentConfig: map[string]any{"WelcomeMessage": "hello two"}},
 		}}
 	oldAppFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return appClient }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return appClient, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return true }
 	t.Cleanup(func() {
 		newDevConsoleClient = oldAppFactory
@@ -626,7 +632,7 @@ func TestBootstrapDevRTCAppCredentialsRollsBackHandledWriteFailures(t *testing.T
 			t.Setenv("VITE_RTC_APP_ID", "${RTC_APP_ID}")
 			oldFactory, oldTerminal := newDevConsoleClient, rtcInputIsTerminal
 			oldEnvWriter, oldSceneWriter, oldConfigWriter := writeDevProjectEnv, writeDevBotScenes, writeDevConfig
-			newDevConsoleClient = func(*config.Config) devConsoleClient { return client }
+			newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return client, nil }
 			rtcInputIsTerminal = func(io.Reader) bool { return false }
 			t.Cleanup(func() {
 				newDevConsoleClient = oldFactory
@@ -669,7 +675,7 @@ func TestBootstrapDevRTCAppCredentialsReturnsAppCandidates(t *testing.T) {
 		{AppID: "one", Name: "One", Status: "1"},
 		{AppID: "two", Name: "Two", Status: "1"},
 	}}
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return false }
 	t.Cleanup(func() {
 		newDevConsoleClient = oldFactory
@@ -706,9 +712,9 @@ func TestDevDryRunReportsBootstrapWithoutOpenAPIOrWrite(t *testing.T) {
 	t.Setenv("RTC_APP_KEY", "")
 	oldFactory, oldDryRun := newDevConsoleClient, flagDryRun
 	called := false
-	newDevConsoleClient = func(*config.Config) devConsoleClient {
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) {
 		called = true
-		return &fakeRTCAppClient{}
+		return &fakeRTCAppClient{}, nil
 	}
 	flagDryRun = true
 	t.Cleanup(func() {
@@ -1021,7 +1027,7 @@ func TestDevBootstrapsCredentialsThenRunsTask(t *testing.T) {
 		appKey: "secret",
 	}
 	oldFactory, oldTerminal, oldDryRun := newDevConsoleClient, rtcInputIsTerminal, flagDryRun
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	rtcInputIsTerminal = func(io.Reader) bool { return true }
 	flagDryRun = false
 	t.Cleanup(func() {
@@ -1348,7 +1354,7 @@ func TestDoctorDoesNotCompleteMissingRTCAppCredentials(t *testing.T) {
 	t.Setenv("VITE_RTC_APP_ID", "${RTC_APP_ID}")
 	fake := &fakeRTCAppClient{}
 	oldAppFactory, oldDryRun := newDevConsoleClient, flagDryRun
-	newDevConsoleClient = func(*config.Config) devConsoleClient { return fake }
+	newDevConsoleClient = func(*config.Config) (devConsoleClient, error) { return fake, nil }
 	flagDryRun = false
 	t.Cleanup(func() {
 		newDevConsoleClient = oldAppFactory

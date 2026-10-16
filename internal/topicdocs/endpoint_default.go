@@ -5,9 +5,12 @@
 
 package topicdocs
 
+import "github.com/volcengine/VolcEngineRTC_CLI/internal/product"
+
 func newDefaultClient(version string, options ...Option) (*Client, error) {
-	if err := validateProductionEndpoint(productionEndpoint); err != nil {
+	endpoint := product.Current().DocsMCPEndpoint
+	if err := validateProductionEndpoint(endpoint); err != nil {
 		return nil, err
 	}
-	return newClient(productionEndpoint, version, nil, options...)
+	return newClient(endpoint, version, nil, options...)
 }

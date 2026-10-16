@@ -19,6 +19,7 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/output"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/selfupdate"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/skillscheck"
 	updatecheck "github.com/volcengine/VolcEngineRTC_CLI/internal/update"
@@ -55,10 +56,11 @@ func resolveOutputFormat(requested string, stdoutTTY bool) output.Format {
 
 // NewRootCmd builds the root command with all subcommands registered.
 func NewRootCmd() *cobra.Command {
+	profile := product.Current()
 	root := &cobra.Command{
 		Use:   meta.BinName,
-		Short: meta.BinName + " — VolcEngine AI audio/video developer workflow CLI",
-		Long: meta.BinName + " scaffolds, configures, diagnoses and runs VolcEngine " +
+		Short: meta.BinName + " — " + profile.DisplayName + " AI audio/video developer workflow CLI",
+		Long: meta.BinName + " scaffolds, configures, diagnoses and runs " + profile.DisplayName + " " +
 			"AI audio/video projects. It is a developer-workflow tool (init/doctor/dev), " +
 			"not an SDK wrapper.",
 		SilenceErrors:     true,

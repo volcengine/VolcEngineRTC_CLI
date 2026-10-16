@@ -414,6 +414,14 @@ func TestExplainErrorKnownAndUnknown(t *testing.T) {
 	if data["query"] != "-1000" || data["found"] != false {
 		t.Fatalf("negative code was not parsed as data: %v", data)
 	}
+	if hint, _ := data["hint"].(string); !strings.Contains(hint, `vertc docs search -- '-1000'`) || !strings.Contains(hint, "vertc doctor") {
+		t.Fatalf("negative-code recovery hint is incomplete: %q", hint)
+	}
+
+	help := run(t, dir, nil, "explain-error", "--help")
+	if help.code != 0 || !strings.Contains(help.stdout, "vertc explain-error -- -1000") {
+		t.Fatalf("explain-error help omits negative-code syntax: code=%d stdout=%q stderr=%q", help.code, help.stdout, help.stderr)
+	}
 }
 
 func TestFullFirstRunLoop(t *testing.T) {

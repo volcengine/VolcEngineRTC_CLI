@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "protected_paths": [
+    "cmd",
+    "internal/auth",
+    "internal/config",
+    "internal/doctor",
+    "internal/meta",
+    "internal/openapi",
+    "internal/template",
+    "internal/topicdocs",
+    "skills",
+    "tests",
+    "Makefile",
+    "README.md",
+    "go.mod",
+    "main.go"
+  ],
+  "identity": {
+    "display_name": "VolcEngine",
+    "binary": "vertc",
+    "module": "github.com/volcengine/VolcEngineRTC_CLI",
+    "config_file": "vertc.config.yaml",
+    "business_id": "vertc_cli",
+    "user_agent_product": "vertc"
+  },
+  "commands": {
+    "visible": ["auth", "dev", "docs", "doctor", "explain-error", "help", "init", "skills", "update", "version"],
+    "hidden": ["agent", "completion", "config", "env", "openapi", "token"]
+  },
+  "config": {
+    "project_region": "cn-north-1",
+    "openapi_endpoint": "https://rtc.volcengineapi.com",
+    "openapi_service": "rtc",
+    "openapi_region": "cn-north-1",
+    "rtc_app_id": "${RTC_APP_ID}",
+    "rtc_room_id": "room-01",
+    "rtc_user_id": "user-01",
+    "agent_user_id": "voice_agent",
+    "agent_config_file": "server/scenes/default.json"
+  },
+  "authentication": {
+    "authorize_endpoint": "https://signin.volcengine.com/authorize/oauth/authorize",
+    "token_endpoint": "https://signin.volcengine.com/authorize/oauth/token",
+    "local_client_id": "trn:signin:::devtools/same-device",
+    "remote_client_id": "trn:signin:::devtools/cross-device",
+    "scope": "Console:All:All",
+    "remote_redirect_uri": "https://signin.volcengine.com/authorize/oauth/authorize",
+    "storage_namespace": "default"
+  },
+  "openapi": {
+    "endpoint": "https://rtc.volcengineapi.com",
+    "service": "rtc",
+    "region": "cn-north-1",
+    "voicechat_version": "2025-06-01",
+    "agent_user_id_field": "UserId",
+    "agent_target_user_id_field": "TargetUserId"
+  },
+  "voicechat": {
+    "start_action": "StartVoiceChat",
+    "update_action": "UpdateVoiceChat",
+    "stop_action": "StopVoiceChat",
+    "start_request_json": "{\"AppId\":\"app\",\"BusinessId\":\"vertc_cli\",\"RoomId\":\"room\",\"TaskId\":\"task\",\"Config\":{\"ASRConfig\":{}},\"AgentConfig\":{\"TargetUserId\":[\"user\"],\"UserId\":\"agent\"}}"
+  },
+  "template": {
+    "scene": "voice-agent",
+    "platform": "web",
+    "sdk_name": "@volcengine/rtc",
+    "sdk_version": "4.69.3",
+    "repository": "volcengine/rtc-aigc-demo",
+    "commit": "9ecaee85a6b5a1a7376ec048156d736d9ffc9db3",
+    "sha256": "3c58038767cb7838e3aa0def31511374ad6ccd722e76a6827e844e5148473c8f"
+  },
+  "doctor_check_ids": ["cli.runtime", "cli.version", "cli.update", "cli.toolchain", "cli.auth"],
+  "docs_mcp_endpoint": "https://topic.bytedance.com/mcp/rtc"
+}

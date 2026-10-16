@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 type observedRequest struct {
@@ -707,10 +708,10 @@ func TestProductionConstructionIgnoresEndpointAndHeaderEnvironment(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if client.endpoint != productionEndpoint || client.userAgent != "vertc/1.2.3" {
+	if client.endpoint != product.Current().DocsMCPEndpoint || client.userAgent != "vertc/1.2.3" {
 		t.Fatalf("endpoint=%q ua=%q", client.endpoint, client.userAgent)
 	}
-	if err := validateProductionEndpoint(productionEndpoint); err != nil {
+	if err := validateProductionEndpoint(product.Current().DocsMCPEndpoint); err != nil {
 		t.Fatal(err)
 	}
 	for _, endpoint := range []string{

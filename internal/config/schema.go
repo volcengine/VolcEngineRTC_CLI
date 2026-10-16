@@ -6,6 +6,8 @@
 // validates it, and dev reads it.
 package config
 
+import "github.com/volcengine/VolcEngineRTC_CLI/internal/product"
+
 // SchemaVersion is the current config schema version.
 const SchemaVersion = 1
 
@@ -70,21 +72,22 @@ type OpenAPI struct {
 }
 
 const (
-	DefaultOpenAPIEndpoint = "https://rtc.volcengineapi.com"
-	DefaultOpenAPIService  = "rtc"
-	DefaultOpenAPIRegion   = "cn-north-1"
+	DefaultOpenAPIEndpoint = product.DefaultOpenAPIEndpoint
+	DefaultOpenAPIService  = product.DefaultOpenAPIService
+	DefaultOpenAPIRegion   = product.DefaultOpenAPIRegion
 )
 
 // Default returns a config pre-populated with `${ENV}` placeholders and the
 // given project identity, suitable for scaffolding.
 func Default(name, scene, platform string) *Config {
+	profile := product.Current()
 	c := &Config{
 		Version: SchemaVersion,
 		Project: Project{
 			Name:     name,
 			Scene:    scene,
 			Platform: platform,
-			Region:   "cn-north-1",
+			Region:   profile.ProjectRegion,
 		},
 		RTC: RTC{
 			AppID:  "${RTC_APP_ID}",
@@ -94,9 +97,9 @@ func Default(name, scene, platform string) *Config {
 		Agent:    Agent{},
 		Features: Features{},
 		OpenAPI: OpenAPI{
-			Endpoint: DefaultOpenAPIEndpoint,
-			Service:  DefaultOpenAPIService,
-			Region:   DefaultOpenAPIRegion,
+			Endpoint: profile.OpenAPIEndpoint,
+			Service:  profile.OpenAPIService,
+			Region:   profile.OpenAPIRegion,
 		},
 	}
 	if scene == "voice-agent" {

@@ -15,14 +15,15 @@ import (
 	"time"
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 // Defaults for the RTC OpenAPI.
 const (
-	DefaultEndpoint = "https://rtc.volcengineapi.com"
-	DefaultRegion   = "cn-north-1"
-	DefaultService  = "rtc"
-	DefaultVersion  = "2025-06-01"
+	DefaultEndpoint = product.DefaultOpenAPIEndpoint
+	DefaultRegion   = product.DefaultOpenAPIRegion
+	DefaultService  = product.DefaultOpenAPIService
+	DefaultVersion  = product.DefaultVoiceChatVersion
 )
 
 // Credential is the signing material used for Volcengine OpenAPI calls.
@@ -51,10 +52,11 @@ type Client struct {
 
 // NewClient builds a client with pinned RTC defaults and the given provider.
 func NewClient(provider CredentialProvider) *Client {
+	profile := product.Current()
 	return &Client{
-		Endpoint: DefaultEndpoint,
-		Service:  DefaultService,
-		Region:   DefaultRegion,
+		Endpoint: profile.OpenAPIEndpoint,
+		Service:  profile.OpenAPIService,
+		Region:   profile.OpenAPIRegion,
 		HTTP:     &http.Client{Timeout: 15 * time.Second},
 		Provider: provider,
 	}
@@ -245,21 +247,21 @@ func (c *Client) endpoint() string {
 	if c.Endpoint != "" {
 		return c.Endpoint
 	}
-	return DefaultEndpoint
+	return product.Current().OpenAPIEndpoint
 }
 
 func (c *Client) service() string {
 	if c.Service != "" {
 		return c.Service
 	}
-	return DefaultService
+	return product.Current().OpenAPIService
 }
 
 func (c *Client) region() string {
 	if c.Region != "" {
 		return c.Region
 	}
-	return DefaultRegion
+	return product.Current().OpenAPIRegion
 }
 
 func (c *Client) now() time.Time {

@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 type staticProvider struct {
@@ -100,5 +102,17 @@ func TestClientCallAPIError(t *testing.T) {
 	}
 	if ae.Code != "SignatureDoesNotMatch" || ae.RequestID != "rid" {
 		t.Fatalf("unexpected APIError: %+v", ae)
+	}
+}
+
+func TestClientUsesProductDefaultsAndExplicitOverrides(t *testing.T) {
+	profile := product.Current()
+	client := &Client{}
+	if client.endpoint() != profile.OpenAPIEndpoint || client.service() != profile.OpenAPIService || client.region() != profile.OpenAPIRegion {
+		t.Fatal("client defaults differ from the current product")
+	}
+	client.Endpoint, client.Service, client.Region = "https://custom.invalid", "custom-service", "custom-region"
+	if client.endpoint() != client.Endpoint || client.service() != client.Service || client.region() != client.Region {
+		t.Fatal("client ignored explicit connection settings")
 	}
 }

@@ -182,7 +182,8 @@ type aibotxQueryRequest struct {
 }
 
 type aibotxQueryResult struct {
-	Bots []Bot `json:"Bots"`
+	Bots         []Bot  `json:"Bots"`
+	NextIterator string `json:"NextIterator"`
 }
 
 // AibotxQuery lists every conversational-AI bot so dev can offer multi-selection.
@@ -195,8 +196,10 @@ func (c ConsoleClient) AibotxQuery(ctx context.Context, pageNum, limit int) ([]B
 	}
 	var all []Bot
 	seenBots := map[string]bool{}
+	seenIterators := map[string]bool{}
+	iterator := ""
 	for pages := 0; pages < 100; pages++ {
-		body, err := json.Marshal(aibotxQueryRequest{PageNum: pageNum, Limit: limit, Iterator: ""})
+		body, err := json.Marshal(aibotxQueryRequest{PageNum: pageNum, Limit: limit, Iterator: iterator})
 		if err != nil {
 			return nil, &APIError{Action: AibotxQueryAction, Message: "marshal request: " + err.Error()}
 		}
@@ -215,10 +218,16 @@ func (c ConsoleClient) AibotxQuery(ctx context.Context, pageNum, limit int) ([]B
 			seenBots[bot.ID] = true
 			all = append(all, bot)
 		}
-		if len(result.Bots) < limit {
-			break
+		next := strings.TrimSpace(result.NextIterator)
+		if next == "" {
+			return all, nil
 		}
+		if seenIterators[next] {
+			return nil, &APIError{Action: AibotxQueryAction, Message: "repeated pagination cursor"}
+		}
+		seenIterators[next] = true
+		iterator = next
 		pageNum++
 	}
-	return all, nil
+	return nil, &APIError{Action: AibotxQueryAction, Message: "pagination exceeds 100 pages"}
 }

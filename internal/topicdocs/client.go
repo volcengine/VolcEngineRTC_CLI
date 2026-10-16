@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
-	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/telemetry"
 )
 
@@ -67,7 +67,7 @@ func New(version string, options ...Option) (*Client, error) {
 
 func validateProductionEndpoint(endpoint string) error {
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || u.Host != "topic.bytedance.com" || u.Path != "/mcp/rtc" ||
+	if err != nil || endpoint != product.Current().DocsMCPEndpoint || u.Scheme != "https" || u.Host == "" || u.Path == "" ||
 		u.RawPath != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return errs.New("vertc.docs.invalid_argument", errs.TypeValidation,
 			"invalid fixed RTC documentation endpoint")
@@ -85,7 +85,7 @@ func newClient(endpoint, version string, httpClient *http.Client, options ...Opt
 		return nil, errs.New("vertc.docs.invalid_argument", errs.TypeValidation,
 			"CLI version is empty").WithParam("version")
 	}
-	userAgent := meta.UserAgentProduct + "/" + version
+	userAgent := product.Current().UserAgentProduct + "/" + version
 	if invocationUserAgent, ok := telemetry.GetInvocationUserAgent(); ok {
 		userAgent = invocationUserAgent
 	}
@@ -193,7 +193,7 @@ func (c *Client) prepare(ctx context.Context, tool string) (toolSchema, error) {
 		"protocolVersion": OfferedProtocol,
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]string{
-			"name": meta.UserAgentProduct, "version": c.version,
+			"name": product.Current().UserAgentProduct, "version": c.version,
 		},
 	}, lifecycleTimeout, &initialized); err != nil {
 		return toolSchema{}, err

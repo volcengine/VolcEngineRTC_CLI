@@ -6,6 +6,9 @@ package template
 import "testing"
 
 func TestVoiceAgentTemplateAvailableAndDefault(t *testing.T) {
+	if registeredRegistryProviderCount() != 1 {
+		t.Fatalf("registry provider count = %d", registeredRegistryProviderCount())
+	}
 	tmpl, ok := Find("voice-agent", "web")
 	if !ok || !tmpl.Available || !tmpl.Default {
 		t.Fatalf("voice-agent/web should be available + default: %+v", tmpl)

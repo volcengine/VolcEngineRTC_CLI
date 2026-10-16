@@ -8,12 +8,14 @@
 // the identity with ldflags.
 package meta
 
+import "github.com/volcengine/VolcEngineRTC_CLI/internal/product"
+
 // These values may be overridden at build time via -ldflags, e.g.
 //
 //	go build -ldflags "-X github.com/volcengine/VolcEngineRTC_CLI/internal/meta.BinName=volc-aiav"
 var (
 	// BinName is the invoked command name / binary name.
-	BinName = "vertc"
+	BinName = product.DefaultBinaryName
 
 	// Version is the CLI version; injected via ldflags in release builds.
 	Version = "0.0.1-dev"
@@ -33,11 +35,11 @@ var (
 
 // BusinessID is the stable RTC attribution tag for traffic started by this
 // product. It intentionally does not follow release-time BinName aliases.
-const BusinessID = "vertc_cli"
+const BusinessID = product.DefaultBusinessID
 
 // UserAgentProduct is the stable product token used for RTC OpenAPI request
 // attribution. Unlike BinName, it does not change for release-time aliases.
-const UserAgentProduct = "vertc"
+const UserAgentProduct = product.DefaultUserAgentProduct
 
 // ConfigFileName is the canonical unified config file name.
-const ConfigFileName = "vertc.config.yaml"
+const ConfigFileName = product.DefaultConfigFileName

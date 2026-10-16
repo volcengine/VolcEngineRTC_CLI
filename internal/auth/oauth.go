@@ -16,16 +16,17 @@ import (
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 const (
-	DefaultAuthorizeEndpoint = "https://signin.volcengine.com/authorize/oauth/authorize"
-	DefaultTokenEndpoint     = "https://signin.volcengine.com/authorize/oauth/token"
+	DefaultAuthorizeEndpoint = product.DefaultAuthorizeURL
+	DefaultTokenEndpoint     = product.DefaultTokenURL
 	DefaultRedirectURI       = "http://127.0.0.1:0"
 	DefaultRemoteRedirectURI = DefaultAuthorizeEndpoint
-	DefaultScope             = "Console:All:All"
-	DefaultLocalClientID     = "trn:signin:::devtools/same-device"
-	DefaultRemoteClientID    = "trn:signin:::devtools/cross-device"
+	DefaultScope             = product.DefaultOAuthScope
+	DefaultLocalClientID     = product.DefaultLocalClientID
+	DefaultRemoteClientID    = product.DefaultRemoteClientID
 	TokenTypeAccessTokenSTS  = "urn:ietf:params:oauth:token-type:access_token_sts"
 )
 
@@ -34,6 +35,7 @@ type AuthorizeParams struct {
 	AuthorizeEndpoint string
 	ClientID          string
 	RedirectURI       string
+	Scope             string
 	State             string
 	Nonce             string
 	CodeChallenge     string
@@ -70,7 +72,7 @@ func BuildAuthorizeURL(params AuthorizeParams) (string, error) {
 	values.Set("response_type", "code")
 	values.Set("client_id", params.ClientID)
 	values.Set("redirect_uri", params.RedirectURI)
-	values.Set("scope", DefaultScope)
+	values.Set("scope", scopeOrDefault(params.Scope))
 	values.Set("state", params.State)
 	values.Set("nonce", params.Nonce)
 	values.Set("code_challenge", params.CodeChallenge)
@@ -81,6 +83,12 @@ func BuildAuthorizeURL(params AuthorizeParams) (string, error) {
 
 // ExchangeCode exchanges an authorization code for Console Credential tokens.
 func ExchangeCode(ctx context.Context, httpClient *http.Client, tokenEndpoint, clientID, redirectURI, code, codeVerifier string) (TokenSet, error) {
+	return ExchangeCodeWithScope(ctx, httpClient, tokenEndpoint, clientID, redirectURI, code, codeVerifier, DefaultScope)
+}
+
+// ExchangeCodeWithScope exchanges an authorization code using an explicit
+// fixed product scope. Public clients never send a client secret.
+func ExchangeCodeWithScope(ctx context.Context, httpClient *http.Client, tokenEndpoint, clientID, redirectURI, code, codeVerifier, scope string) (TokenSet, error) {
 	values := url.Values{}
 	values.Set("grant_type", "authorization_code")
 	values.Set("client_id", clientID)
@@ -93,13 +101,19 @@ func ExchangeCode(ctx context.Context, httpClient *http.Client, tokenEndpoint, c
 	}
 	token.ClientID = clientID
 	if token.Scope == "" {
-		token.Scope = DefaultScope
+		token.Scope = scopeOrDefault(scope)
 	}
 	return token, nil
 }
 
 // RefreshToken refreshes an existing Console Credential token.
 func RefreshToken(ctx context.Context, httpClient *http.Client, tokenEndpoint string, stored TokenSet) (TokenSet, error) {
+	return RefreshTokenWithScope(ctx, httpClient, tokenEndpoint, stored, DefaultScope)
+}
+
+// RefreshTokenWithScope refreshes a token using an explicit fixed product
+// scope while retaining the existing RefreshToken compatibility entrypoint.
+func RefreshTokenWithScope(ctx context.Context, httpClient *http.Client, tokenEndpoint string, stored TokenSet, scope string) (TokenSet, error) {
 	if strings.TrimSpace(stored.RefreshToken) == "" {
 		return TokenSet{}, errs.New("vertc.auth.not_authenticated", errs.TypeAuth,
 			"stored token has no refresh_token").
@@ -115,7 +129,7 @@ func RefreshToken(ctx context.Context, httpClient *http.Client, tokenEndpoint st
 	values.Set("grant_type", "refresh_token")
 	values.Set("client_id", clientID)
 	values.Set("refresh_token", stored.RefreshToken)
-	values.Set("scope", DefaultScope)
+	values.Set("scope", scopeOrDefault(scope))
 	token, err := postTokenForm(ctx, httpClient, tokenEndpoint, values)
 	if err != nil {
 		return TokenSet{}, err
@@ -128,9 +142,16 @@ func RefreshToken(ctx context.Context, httpClient *http.Client, tokenEndpoint st
 		token.IDToken = stored.IDToken
 	}
 	if token.Scope == "" {
-		token.Scope = DefaultScope
+		token.Scope = scopeOrDefault(scope)
 	}
 	return token, nil
+}
+
+func scopeOrDefault(scope string) string {
+	if scope = strings.TrimSpace(scope); scope != "" {
+		return scope
+	}
+	return DefaultScope
 }
 
 // NormalizeTokenSet fills metadata derived from the token response.

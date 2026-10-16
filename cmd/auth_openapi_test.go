@@ -70,6 +70,44 @@ func TestAuthLoginAskRequiresInteractionOutsideTTY(t *testing.T) {
 	}
 }
 
+func TestAuthLoginPreflightsStoreBeforeOpeningBrowser(t *testing.T) {
+	for _, store := range []string{auth.StoreFile, auth.StoreKeyring} {
+		t.Run(store, func(t *testing.T) {
+			restoreStore := auth.SetTokenStoreForTest(nil)
+			defer restoreStore()
+			restoreGlobals := overrideAuthGlobals(t)
+			defer restoreGlobals()
+
+			home := t.TempDir()
+			t.Setenv("VERTC_HOME", home)
+			credentialPath := filepath.Join(home, "auth.json")
+			if err := os.Mkdir(credentialPath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			authOpenBrowser = func(string) error {
+				t.Fatal("browser opened before credential-store preflight")
+				return nil
+			}
+
+			cmd := NewRootCmd()
+			cmd.SetArgs([]string{"auth", "login", "--browser=open", "--store=" + store, "--force"})
+			err := cmd.Execute()
+			typed, ok := errs.As(err)
+			if !ok || typed.Code != "vertc.auth.storage_unavailable" {
+				t.Fatalf("err = %v", err)
+			}
+			if !strings.Contains(typed.Message, "file:"+credentialPath) {
+				t.Fatalf("preflight error omits credential location: %q", typed.Message)
+			}
+			for _, guidance := range []string{"sandbox directory permissions", "VERTC_HOME", "subsequent commands"} {
+				if !strings.Contains(typed.Hint, guidance) {
+					t.Fatalf("preflight hint missing %q: %q", guidance, typed.Hint)
+				}
+			}
+		})
+	}
+}
+
 func TestAuthLoginAskCanBeCanceledBeforeSideEffects(t *testing.T) {
 	restoreStore := auth.SetTokenStoreForTest(auth.NewMemoryTokenStore())
 	defer restoreStore()

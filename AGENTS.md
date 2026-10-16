@@ -9,12 +9,14 @@ scoped, and consistent with the surrounding code.
 main.go                 → cmd.Execute()
 cmd/                    → cobra command tree (one file per command group)
 internal/
-  meta/                 → BinName/Version — the single identity source
+  product/              → immutable product profile and scalar contracts
+  meta/                 → CLI identity and release metadata, defaults from product
   output/               → JSON envelope, stdout(data)/stderr(progress) split, --format
   errs/                 → typed error envelope + stable error.code catalog (CI-gated)
   config/               → vertc.config.yaml schema, load/save/validate, ${ENV}, sync stub
   token/                → vendored VRTC AccessToken + issue/check/inspect
-  template/             → registry + pinned remote downloader/cache + renderer
+  template/             → registry provider + pinned remote downloader/cache + renderer
+    registry_default.go → default template entries, SDK and archive pins
     files/              → reserved location for future embedded template sources
   errorcodes/           → embedded Web SDK error-code KB (web.yaml) + loader
   doctor/               → two-level readiness checks
@@ -57,6 +59,15 @@ scripts/                → CI helpers (snapshot-error-codes.sh)
 8. **Skills are Agent 场景工作流, not command manuals** — use a thin top-level
    router for scene decisions, command order, and failure routing; put detailed
    domain knowledge in flat `references/`. Follow `skill-template/skill-template.md`.
+
+9. **Product contracts have explicit owners.** Scalar defaults live in
+   `internal/product/default.go` and are read through `product.Current()`.
+   Project setup behavior belongs to `cmd/dev_setup_default.go`, VoiceChat
+   request encoding to `internal/openapi/agent_contract_default.go`, and
+   template selection to `internal/template/registry_default.go`. Keep behavior
+   behind these consumer-owned interfaces. Keep command implementations free of
+   branches on product identity. Update the default contract fixture and
+   affected package tests when a product contract changes.
 
 ## Commit / PR
 

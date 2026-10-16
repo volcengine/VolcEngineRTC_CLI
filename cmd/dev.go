@@ -25,15 +25,19 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/openapi"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/provision"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/telemetry"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/template"
 )
 
 var (
-	newDevConsoleClient = func(cfg *config.Config) devConsoleClient {
-		client := openapi.NewConsoleClient(newAuthenticatedOpenAPIClient(cfg))
-		return client
+	newDevConsoleClient = func(cfg *config.Config) (devConsoleClient, error) {
+		contract, err := currentDevSetupContract()
+		if err != nil {
+			return nil, err
+		}
+		return contract.NewConsoleClient(cfg), nil
 	}
 	rtcInputIsTerminal = func(input io.Reader) bool {
 		file, ok := input.(*os.File)
@@ -128,9 +132,13 @@ func newDevCmd() *cobra.Command {
 					"RTC application setup requires rtc.app_id to reference ${RTC_APP_ID}").
 					WithHint("set rtc.app_id to ${RTC_APP_ID} before retrying")
 			}
+			setupContract, err := currentDevSetupContract()
+			if err != nil {
+				return err
+			}
 			rep := config.Validate(cfg)
-			credentialBootstrapRequired := config.CanBootstrapRTCAppCredentials(cfg, rep, forceSetup)
-			botResolutionRequired := cfg.Project.Scene == "voice-agent" && strings.TrimSpace(cfg.Agent.ConfigSource) == ""
+			credentialBootstrapRequired := setupContract.CredentialBootstrapRequired(cfg, rep, forceSetup)
+			botResolutionRequired := setupContract.BotSceneDiscoveryRequired(cfg)
 			devSetupRequired := credentialBootstrapRequired || botResolutionRequired
 			if devSetupRequired && !flagDryRun {
 				restoreCredentials, setupErr := bootstrapDevRTCAppCredentialsWithOptions(
@@ -326,7 +334,10 @@ func bootstrapDevRTCAppCredentialsWithOptions(
 	options devSetupOptions,
 ) (func(), error) {
 	interactive := rtcInputIsTerminal(input)
-	client := newDevConsoleClient(cfg)
+	client, err := newDevConsoleClient(cfg)
+	if err != nil {
+		return nil, err
+	}
 	selectorReader := bufio.NewReader(input)
 	refreshCredentials := options.Reconfigure || strings.TrimSpace(options.AppID) != "" ||
 		strings.TrimSpace(os.Getenv("RTC_APP_ID")) == "" || strings.TrimSpace(os.Getenv("RTC_APP_KEY")) == ""
@@ -376,7 +387,11 @@ func bootstrapDevRTCAppCredentialsWithOptions(
 		newSource     = cfg.Agent.ConfigSource
 	)
 	if cfg.Project.Scene == "voice-agent" {
-		resolveBots := options.Reconfigure || len(options.BotIDs) > 0 || strings.TrimSpace(cfg.Agent.ConfigSource) == ""
+		setupContract, err := currentDevSetupContract()
+		if err != nil {
+			return nil, err
+		}
+		resolveBots := setupContract.ShouldResolveBotScenes(cfg, options)
 		if !resolveBots {
 			if err := validateDevScene(dir, cfg.Agent.ConfigFile); err != nil {
 				return nil, err
@@ -395,12 +410,12 @@ func bootstrapDevRTCAppCredentialsWithOptions(
 					return nil, err
 				}
 			case len(options.BotIDs) > 0:
-				selectedBots, err = selectRTCBotsByID(bots, options.BotIDs)
+				selectedBots, err = selectRTCBotsByID(bots, options.BotIDs, selected.AppID)
 			case interactive:
 				selectedBots, err = selectRTCBotsWithReader(input, selectorReader, prompt, bots)
 			default:
 				return nil, devBotSelectionRequiredError(bots,
-					"conversational-AI bots are available; choose which one to use")
+					"conversational-AI bots are available; choose which one to use", selected.AppID)
 			}
 			if err != nil {
 				return nil, err
@@ -514,7 +529,7 @@ func selectRTCAppByID(apps []openapi.RtcApp, appID string) (openapi.RtcApp, erro
 		WithParam("--app-id")
 }
 
-func selectRTCBotsByID(bots []openapi.Bot, botIDs []string) ([]openapi.Bot, error) {
+func selectRTCBotsByID(bots []openapi.Bot, botIDs []string, appIDs ...string) ([]openapi.Bot, error) {
 	available := make(map[string]openapi.Bot, len(bots))
 	for _, bot := range bots {
 		available[bot.ID] = bot
@@ -534,7 +549,7 @@ func selectRTCBotsByID(bots []openapi.Bot, botIDs []string) ([]openapi.Bot, erro
 		bot, ok := available[botID]
 		if !ok {
 			return nil, devBotSelectionRequiredError(bots,
-				fmt.Sprintf("--bot-id %q is not available for the signed-in account", botID)).
+				fmt.Sprintf("--bot-id %q is not available for the signed-in account", botID), appIDs...).
 				WithParam("--bot-id")
 		}
 		seen[botID] = true
@@ -554,15 +569,19 @@ func devAppSelectionRequiredError(apps []openapi.RtcApp, message string) *errs.E
 		WithHint("choose an app_id from error.details.apps and retry `%s dev --app-id <id>`; never paste secrets into chat or command arguments", meta.BinName)
 }
 
-func devBotSelectionRequiredError(bots []openapi.Bot, message string) *errs.Error {
+func devBotSelectionRequiredError(bots []openapi.Bot, message string, appIDs ...string) *errs.Error {
 	candidates := make([]devResourceBot, 0, len(bots))
 	for _, bot := range bots {
 		candidates = append(candidates, devResourceBot{BotID: bot.ID, Name: bot.Name})
 	}
+	retry := fmt.Sprintf("%s dev --bot-id <id>", meta.BinName)
+	if len(appIDs) > 0 && strings.TrimSpace(appIDs[0]) != "" {
+		retry = fmt.Sprintf("%s dev --app-id %s --bot-id <id>", meta.BinName, strings.TrimSpace(appIDs[0]))
+	}
 	return errs.New("vertc.dev.selection_required", errs.TypePrecondition, "%s", message).
 		WithParam("--bot-id").
 		WithDetails(map[string]any{"bots": candidates}).
-		WithHint("choose a bot_id from error.details.bots and retry `%s dev --bot-id <id>`; never paste secrets into chat or command arguments", meta.BinName)
+		WithHint("choose a bot_id from error.details.bots and retry `%s`; never paste secrets into chat or command arguments", retry)
 }
 
 func validateDevScene(dir, configFile string) error {
@@ -946,6 +965,7 @@ func loadProjectEnv(dir string) (func(), error) {
 // direct Node signing for explicit long-term AK/SK, or CLI-backed agent
 // start/stop where Signin credentials remain inside a short-lived CLI process.
 func serverManagedTaskEnv(cfg *config.Config, dir string) ([]string, error) {
+	profile := product.Current()
 	configFile := strings.TrimSpace(cfg.Agent.ConfigFile)
 	if configFile == "" {
 		configFile = "server/scenes/default.json"
@@ -963,19 +983,19 @@ func serverManagedTaskEnv(cfg *config.Config, dir string) ([]string, error) {
 	}
 	taskEnv := []string{
 		"AGENT_CONFIG_PATH=" + configFile,
-		"VERTC_BUSINESS_ID=" + meta.BusinessID,
+		"VERTC_BUSINESS_ID=" + profile.BusinessID,
 		"VERTC_PROJECT_DIR=" + projectDir,
 	}
 	if userAgent, ok := telemetry.GetInvocationUserAgent(); ok {
 		taskEnv = append(taskEnv, "VERTC_OPENAPI_USER_AGENT="+userAgent)
 	}
 
-	accessKey := strings.TrimSpace(os.Getenv("VOLCENGINE_ACCESS_KEY_ID"))
-	secretKey := strings.TrimSpace(os.Getenv("VOLCENGINE_SECRET_ACCESS_KEY"))
+	accessKey := strings.TrimSpace(os.Getenv(profile.AccessKeyEnv))
+	secretKey := strings.TrimSpace(os.Getenv(profile.SecretKeyEnv))
 	if accessKey != "" || secretKey != "" {
 		if accessKey == "" || secretKey == "" {
 			return nil, errs.New("vertc.auth.invalid_token", errs.TypeAuth,
-				"VOLCENGINE_ACCESS_KEY_ID and VOLCENGINE_SECRET_ACCESS_KEY must be set together").
+				"%s and %s must be set together", profile.AccessKeyEnv, profile.SecretKeyEnv).
 				WithHint("set both server credentials or unset them and run `%s auth login`", meta.BinName)
 		}
 		return taskEnv, nil

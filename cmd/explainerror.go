@@ -6,6 +6,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -72,14 +73,15 @@ func newExplainErrorCmd() *cobra.Command {
 			query := args[0]
 			e, ok := kb.Lookup(query)
 			if !ok {
+				hint := fmt.Sprintf("search official docs with `%s docs search -- %s`; run `%s doctor` for general triage", meta.BinName, quoteShellArgument(query), meta.BinName)
 				res := explainResult{
 					Query: query, Found: false,
-					Hint: fmt.Sprintf("code not found (Web KB has %d entries); run `%s doctor` for general triage", kb.Count(), meta.BinName),
+					Hint: fmt.Sprintf("code not found (Web KB has %d entries); %s", kb.Count(), hint),
 				}
 				_ = out().Data(res)
 				return errs.New("vertc.explain.unknown_code", errs.TypeNotFound,
 					"error code %q is not in the offline knowledge base", query).
-					WithHint("run `%s doctor` for general triage", meta.BinName).
+					WithHint("%s", hint).
 					Reported()
 			}
 			res := explainResult{
@@ -101,7 +103,12 @@ func newExplainErrorCmd() *cobra.Command {
 		Examples: []string{
 			meta.BinName + " explain-error INVALID_TOKEN",
 			meta.BinName + " explain-error 1202",
+			meta.BinName + " explain-error -- -1000",
 		},
 	})
 	return cmd
+}
+
+func quoteShellArgument(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }

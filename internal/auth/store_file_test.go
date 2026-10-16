@@ -104,6 +104,132 @@ func TestFileStoreAtomicallyReplacesToken(t *testing.T) {
 	}
 }
 
+func TestFileStorePreflightCreatesWritableDirectoryAndCleansProbe(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "private", "auth")
+	path := filepath.Join(dir, "auth.json")
+	store := FileTokenStore{Path: path}
+	if err := store.Preflight(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("auth directory was not created: info=%v err=%v", info, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("preflight created credential file: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, ".auth-preflight-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("preflight probes remain: %v", matches)
+	}
+}
+
+func TestPreflightTokenStoreDoesNotAccessKeyring(t *testing.T) {
+	t.Setenv("VERTC_HOME", t.TempDir())
+	restore, err := SetTokenStoreModeForCommand(StoreKeyring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restore()
+	previousGet, previousSet := keyringGet, keyringSet
+	keyringGet = func(string, string) (string, error) {
+		t.Fatal("preflight read the OS keyring")
+		return "", nil
+	}
+	keyringSet = func(string, string, string) error {
+		t.Fatal("preflight wrote the OS keyring")
+		return nil
+	}
+	defer func() { keyringGet, keyringSet = previousGet, previousSet }()
+	if err := PreflightTokenStore(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKeyringPreflightMetadataPath(t *testing.T) {
+	previousGet, previousSet, previousDelete := keyringGet, keyringSet, keyringDelete
+	keyringGet = func(string, string) (string, error) {
+		t.Fatal("preflight read the OS keyring")
+		return "", nil
+	}
+	keyringSet = func(string, string, string) error {
+		t.Fatal("preflight wrote the OS keyring")
+		return nil
+	}
+	keyringDelete = func(string, string) error {
+		t.Fatal("preflight deleted from the OS keyring")
+		return nil
+	}
+	t.Cleanup(func() { keyringGet, keyringSet, keyringDelete = previousGet, previousSet, previousDelete })
+
+	for _, mode := range []string{"explicit", "persisted", "empty"} {
+		t.Run(mode, func(t *testing.T) {
+			home := filepath.Join(t.TempDir(), "private")
+			t.Setenv("VERTC_HOME", home)
+			path := filepath.Join(home, "auth.json")
+			var restore func()
+			switch mode {
+			case "explicit":
+				var err error
+				restore, err = SetTokenStoreModeForCommand(StoreKeyring)
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "persisted":
+				if err := PersistStoreMode(StoreKeyring); err != nil {
+					t.Fatal(err)
+				}
+				restore = SetTokenStoreForTest(nil)
+			case "empty":
+				restore = SetTokenStoreForTest(KeyringTokenStore{})
+			}
+			t.Cleanup(restore)
+			if err := PreflightTokenStore(); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "empty" {
+				if _, err := os.Stat(home); !os.IsNotExist(err) {
+					t.Fatalf("unexpected metadata directory: %v", err)
+				}
+				return
+			}
+			entries, err := os.ReadDir(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "explicit" && len(entries) != 0 {
+				t.Fatalf("preflight left files: %v", entries)
+			}
+			if mode == "persisted" {
+				if len(entries) != 1 || entries[0].Name() != "auth.json" {
+					t.Fatalf("preflight left files: %v", entries)
+				}
+				envelope, err := readAuthEnvelope(path)
+				if err != nil || envelope.Store != StoreKeyring || envelope.Token != nil {
+					t.Fatalf("metadata changed: %+v, %v", envelope, err)
+				}
+			}
+		})
+	}
+
+	t.Run("invalid parent", func(t *testing.T) {
+		parent := filepath.Join(t.TempDir(), "parent")
+		if err := os.WriteFile(parent, []byte("existing"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(parent, "auth.json")
+		restore := SetTokenStoreForTest(KeyringTokenStore{MetadataPath: path})
+		t.Cleanup(restore)
+		err := PreflightTokenStore()
+		assertStorageError(t, err)
+		if !strings.Contains(err.Error(), path) {
+			t.Fatalf("missing metadata path: %v", err)
+		}
+	})
+}
+
 func TestFileStoreRejectsUnsafePaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission and symlink contract")

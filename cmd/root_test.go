@@ -51,6 +51,7 @@ func TestFormatFlagUsesTerminalAwareDefault(t *testing.T) {
 	format := NewRootCmd().PersistentFlags().Lookup("format")
 	if format == nil {
 		t.Fatal("--format flag is not registered")
+		return
 	}
 	if format.DefValue != "" {
 		t.Fatalf("--format default = %q, want terminal-aware default", format.DefValue)

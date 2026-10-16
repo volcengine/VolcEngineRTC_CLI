@@ -22,6 +22,7 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/auth"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 const authRefreshSkew = 15 * time.Minute
@@ -40,9 +41,28 @@ var (
 		file, ok := reader.(*os.File)
 		return ok && term.IsTerminal(int(file.Fd()))
 	}
-	oauthAuthorizeEndpoint = auth.DefaultAuthorizeEndpoint
-	oauthTokenEndpoint     = auth.DefaultTokenEndpoint
+	// These strings remain linker-overridable for the repository E2E fixture.
+	// init fills only empty production builds from the selected profile.
+	oauthAuthorizeEndpoint string
+	oauthTokenEndpoint     string
 )
+
+func init() {
+	profile := product.Current()
+	if oauthAuthorizeEndpoint == "" {
+		oauthAuthorizeEndpoint = profile.OAuthAuthorizeEndpoint
+	}
+	if oauthTokenEndpoint == "" {
+		oauthTokenEndpoint = profile.OAuthTokenEndpoint
+	}
+}
+
+func currentAuthRefreshSkew() time.Duration {
+	if skew := product.Current().OAuthRefreshSkew; skew > 0 {
+		return skew
+	}
+	return authRefreshSkew
+}
 
 type authLoginResult struct {
 	Authenticated   bool   `json:"authenticated"`
@@ -74,9 +94,10 @@ type authStatusResult struct {
 }
 
 func newAuthCmd() *cobra.Command {
+	profile := product.Current()
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Authenticate and inspect VolcEngine Signin status",
+		Short: "Authenticate and inspect " + profile.DisplayName + " Signin status",
 	}
 	cmd.AddCommand(newAuthLoginCmd(), newAuthRefreshCmd(), newAuthStatusCmd(), newAuthLogoutCmd())
 	affordance.Attach(cmd, affordance.Affordance{
@@ -87,6 +108,7 @@ func newAuthCmd() *cobra.Command {
 }
 
 func newAuthLoginCmd() *cobra.Command {
+	profile := product.Current()
 	var (
 		browserMode     string
 		credentialStore string
@@ -97,7 +119,7 @@ func newAuthLoginCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Log in with VolcEngine Signin using Authorization Code + PKCE",
+		Short: "Log in with " + profile.DisplayName + " Signin using Authorization Code + PKCE",
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := validateAuthBrowserMode(browserMode); err != nil {
 				return err
@@ -106,6 +128,9 @@ func newAuthLoginCmd() *cobra.Command {
 				return err
 			}
 			if resume {
+				if err := requireRemoteOAuth(profile); err != nil {
+					return err
+				}
 				return resumeAuthLogin(c)
 			}
 			if credentialStore != "" {
@@ -138,11 +163,19 @@ func newAuthLoginCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := auth.PreflightTokenStore(); err != nil {
+				return err
+			}
 			manual := effectiveBrowserMode == authBrowserManual
-
-			clientID := auth.DefaultLocalClientID
 			if manual {
-				clientID = auth.DefaultRemoteClientID
+				if err := requireRemoteOAuth(profile); err != nil {
+					return err
+				}
+			}
+
+			clientID := profile.OAuthLocalClientID
+			if manual {
+				clientID = profile.OAuthRemoteClientID
 			}
 			verifier, challenge, err := auth.NewPKCEPair()
 			if err != nil {
@@ -160,7 +193,7 @@ func newAuthLoginCmd() *cobra.Command {
 			var callbackServer *auth.CallbackServer
 			var redirectURI string
 			if manual {
-				redirectURI = auth.DefaultRemoteRedirectURI
+				redirectURI = profile.OAuthRemoteRedirectURI
 			} else {
 				callbackServer, err = auth.StartCallbackServer(auth.DefaultRedirectURI)
 				if err != nil {
@@ -178,6 +211,7 @@ func newAuthLoginCmd() *cobra.Command {
 				AuthorizeEndpoint: oauthAuthorizeEndpoint,
 				ClientID:          clientID,
 				RedirectURI:       redirectURI,
+				Scope:             profile.OAuthScope,
 				State:             state,
 				Nonce:             nonce,
 				CodeChallenge:     challenge,
@@ -214,7 +248,7 @@ func newAuthLoginCmd() *cobra.Command {
 					out().Warn("unable to open browser automatically: %s", err)
 					out().Progress("open this URL manually:\n%s", loginURL)
 				} else {
-					out().Progress("browser opened for VolcEngine Signin login")
+					out().Progress("browser opened for %s Signin login", profile.DisplayName)
 				}
 				waitCtx, cancel := context.WithTimeout(c.Context(), timeout)
 				defer cancel()
@@ -241,7 +275,7 @@ func newAuthLoginCmd() *cobra.Command {
 
 			exchangeCtx, cancel := context.WithTimeout(c.Context(), 30*time.Second)
 			defer cancel()
-			token, err := auth.ExchangeCode(exchangeCtx, authHTTPClient, oauthTokenEndpoint, clientID, redirectURI, authorizationCode, verifier)
+			token, err := auth.ExchangeCodeWithScope(exchangeCtx, authHTTPClient, oauthTokenEndpoint, clientID, redirectURI, authorizationCode, verifier, profile.OAuthScope)
 			if err != nil {
 				return err
 			}
@@ -266,6 +300,15 @@ func newAuthLoginCmd() *cobra.Command {
 		Examples: []string{meta.BinName + " auth login", meta.BinName + " auth login --browser=manual --start", meta.BinName + " auth login --resume", meta.BinName + " auth login --store=keyring --browser=open"},
 	})
 	return cmd
+}
+
+func requireRemoteOAuth(profile product.Profile) error {
+	if profile.Capabilities.RemoteOAuth {
+		return nil
+	}
+	return errs.New("vertc.auth.interaction_required", errs.TypePrecondition,
+		"cross-device OAuth is unavailable for the selected product").
+		WithHint("use `%s auth login --browser=open`", meta.BinName)
 }
 
 func validateAuthLoginPhases(cmd *cobra.Command, browserMode, credentialStore string, force, start, resume bool, timeout time.Duration) error {
@@ -315,9 +358,12 @@ func resumeAuthLogin(cmd *cobra.Command) error {
 		}
 		defer restoreStore()
 	}
+	if err := auth.PreflightTokenStore(); err != nil {
+		return err
+	}
 	exchangeCtx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 	defer cancel()
-	token, err := auth.ExchangeCode(exchangeCtx, authHTTPClient, oauthTokenEndpoint, claimed.ClientID, claimed.RedirectURI, authorizationCode, claimed.CodeVerifier)
+	token, err := auth.ExchangeCodeWithScope(exchangeCtx, authHTTPClient, oauthTokenEndpoint, claimed.ClientID, claimed.RedirectURI, authorizationCode, claimed.CodeVerifier, product.Current().OAuthScope)
 	if err != nil {
 		return err
 	}
@@ -385,13 +431,14 @@ func reusableAuthLogin(ctx context.Context) (auth.TokenSet, bool, bool, error) {
 	if strings.TrimSpace(stored.AccessToken) == "" {
 		return auth.TokenSet{}, false, false, nil
 	}
-	if !stored.Expired(time.Now(), authRefreshSkew) {
+	refreshSkew := currentAuthRefreshSkew()
+	if !stored.Expired(time.Now(), refreshSkew) {
 		return stored, true, false, nil
 	}
 
 	refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	refreshed, didRefresh, err := auth.EnsureFreshToken(refreshCtx, authHTTPClient, authRefreshSkew, oauthTokenEndpoint)
+	refreshed, didRefresh, err := auth.EnsureFreshTokenWithScope(refreshCtx, authHTTPClient, refreshSkew, oauthTokenEndpoint, product.Current().OAuthScope)
 	if err == nil {
 		return refreshed, true, didRefresh, nil
 	}
@@ -427,7 +474,7 @@ func newAuthRefreshCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(c.Context(), 30*time.Second)
 			defer cancel()
-			refreshed, err := auth.RefreshToken(ctx, authHTTPClient, oauthTokenEndpoint, stored)
+			refreshed, err := auth.RefreshTokenWithScope(ctx, authHTTPClient, oauthTokenEndpoint, stored, product.Current().OAuthScope)
 			if err != nil {
 				return err
 			}
@@ -461,7 +508,7 @@ func newAuthStatusCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(c.Context(), 30*time.Second)
 			defer cancel()
-			token, refreshed, err := auth.EnsureFreshToken(ctx, authHTTPClient, authRefreshSkew, oauthTokenEndpoint)
+			token, refreshed, err := auth.EnsureFreshTokenWithScope(ctx, authHTTPClient, currentAuthRefreshSkew(), oauthTokenEndpoint, product.Current().OAuthScope)
 			if err != nil {
 				return err
 			}

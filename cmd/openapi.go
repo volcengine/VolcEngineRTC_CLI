@@ -18,6 +18,7 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/config"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/openapi"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/telemetry"
 )
 
@@ -28,9 +29,10 @@ type openAPIInvokeResult struct {
 }
 
 func newOpenAPICmd() *cobra.Command {
+	profile := product.Current()
 	cmd := &cobra.Command{
 		Use:    "openapi",
-		Short:  "Invoke VolcEngine OpenAPI with stored Signin STS credentials",
+		Short:  "Invoke " + profile.DisplayName + " OpenAPI with stored Signin STS credentials",
 		Hidden: true,
 	}
 	cmd.AddCommand(newOpenAPIInvokeCmd())
@@ -164,6 +166,7 @@ func parseQueryArgs(args []string) (url.Values, error) {
 }
 
 func newAuthenticatedOpenAPIClient(cfg *config.Config) *openapi.Client {
+	profile := product.Current()
 	client := openapi.NewClient(auth.STSProvider{})
 	if userAgent, ok := telemetry.GetInvocationUserAgent(); ok {
 		client.UserAgent = userAgent
@@ -174,8 +177,9 @@ func newAuthenticatedOpenAPIClient(cfg *config.Config) *openapi.Client {
 	}
 	client.Provider = auth.STSProvider{
 		HTTPClient:    httpClient,
-		RefreshSkew:   authRefreshSkew,
+		RefreshSkew:   profile.OAuthRefreshSkew,
 		TokenEndpoint: oauthTokenEndpoint,
+		Scope:         profile.OAuthScope,
 	}
 	if cfg != nil {
 		client.Endpoint = cfg.OpenAPI.Endpoint

@@ -172,7 +172,7 @@ func newSkillsReadCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON {
+			if asJSON || (c.Flags().Changed("format") && flagFormat == "json") {
 				return out().Data(map[string]any{
 					"skill": name, "path": pathOut,
 					"version": r.Version(), "content": string(content),

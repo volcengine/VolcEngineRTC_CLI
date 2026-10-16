@@ -121,14 +121,14 @@ func TestAibotxQueryPaginatesAndDeduplicatesBots(t *testing.T) {
 			if req.Iterator != "" || req.PageNum != 1 {
 				t.Fatalf("first request = %+v", req)
 			}
-			_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"one"},{"Id":"two"}],"Iterator":"ignored-response-cursor"}}`)
+			_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"one"},{"Id":"two"}],"NextIterator":"page-two"}}`)
 		case 2:
-			if req.Iterator != "" || req.PageNum != 2 {
+			if req.Iterator != "page-two" || req.PageNum != 2 {
 				t.Fatalf("second request = %+v", req)
 			}
-			_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"two"},{"Id":"three"},{"Name":"missing-id"}]}}`)
+			_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"two"},{"Id":"three"},{"Name":"missing-id"}],"NextIterator":"page-three"}}`)
 		case 3:
-			if req.Iterator != "" || req.PageNum != 3 {
+			if req.Iterator != "page-three" || req.PageNum != 3 {
 				t.Fatalf("third request = %+v", req)
 			}
 			_, _ = io.WriteString(w, `{"Result":{"Bots":[]}}`)
@@ -219,5 +219,42 @@ func TestConsoleClientAPIErrorIsParseable(t *testing.T) {
 	}
 	if ae.Code != "InvalidParameter" || ae.RequestID != "rid" {
 		t.Fatalf("APIError = %+v", ae)
+	}
+}
+
+func TestAibotxQueryFollowsCursorOnShortPage(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"one"}],"NextIterator":"next"}}`)
+			return
+		}
+		var req aibotxQueryRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		if req.Iterator != "next" {
+			t.Errorf("iterator = %q", req.Iterator)
+		}
+		_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"two"}]}}`)
+	}))
+	defer srv.Close()
+	bots, err := newConsoleTestClient(srv).AibotxQuery(context.Background(), 1, 12)
+	if err != nil || requests != 2 || len(bots) != 2 {
+		t.Fatalf("requests=%d bots=%d err=%v", requests, len(bots), err)
+	}
+}
+
+func TestAibotxQueryRejectsRepeatedCursor(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		_, _ = io.WriteString(w, `{"Result":{"Bots":[{"Id":"one"}],"NextIterator":"same"}}`)
+	}))
+	defer srv.Close()
+	bots, err := newConsoleTestClient(srv).AibotxQuery(context.Background(), 1, 1)
+	if err == nil || requests != 2 || len(bots) != 0 {
+		t.Fatalf("requests=%d bots=%d err=%v", requests, len(bots), err)
 	}
 }

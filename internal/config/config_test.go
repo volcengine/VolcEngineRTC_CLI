@@ -136,3 +136,14 @@ func TestFindWalksUp(t *testing.T) {
 		t.Fatalf("expected find at %s, got %s", dir, found)
 	}
 }
+
+func TestDefaultVolcEngineServiceContract(t *testing.T) {
+	cfg := Default("demo", "voice-agent", "web")
+	if cfg.Project.Region != "cn-north-1" || cfg.OpenAPI.Endpoint != "https://rtc.volcengineapi.com" ||
+		cfg.OpenAPI.Service != "rtc" || cfg.OpenAPI.Region != "cn-north-1" {
+		t.Fatalf("default service configuration drifted: project=%+v openapi=%+v", cfg.Project, cfg.OpenAPI)
+	}
+	if cfg.RTC.AppID != "${RTC_APP_ID}" || cfg.RTC.RoomID != "room-01" || cfg.RTC.UserID != "user-01" {
+		t.Fatalf("default RTC identity drifted: %+v", cfg.RTC)
+	}
+}

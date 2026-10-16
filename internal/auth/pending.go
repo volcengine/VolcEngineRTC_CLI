@@ -15,13 +15,20 @@ import (
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 const (
 	pendingAuthorizationVersion = 1
-	pendingAuthorizationFile    = "auth-pending.json"
-	pendingAuthorizationClaim   = "auth-pending.claim"
 )
+
+func pendingAuthorizationNames() (file, claim string) {
+	namespace := strings.TrimSpace(product.Current().AuthStorageNamespace)
+	if namespace != "" && namespace != product.DefaultAuthNamespace {
+		return "auth-pending-" + namespace + ".json", "auth-pending-" + namespace + ".claim"
+	}
+	return "auth-pending.json", "auth-pending.claim"
+}
 
 // PendingAuthorization is the short-lived OAuth context needed to finish a
 // cross-process manual login. CodeVerifier must never be printed.
@@ -60,7 +67,8 @@ func PendingAuthorizationLocation() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(filepath.Dir(authPath), pendingAuthorizationFile), nil
+	file, _ := pendingAuthorizationNames()
+	return filepath.Join(filepath.Dir(authPath), file), nil
 }
 
 // SavePendingAuthorization atomically replaces the single pending transaction.
@@ -115,7 +123,8 @@ func ClaimPendingAuthorization(expectedState string, now time.Time) (pending Pen
 	if err != nil {
 		return PendingAuthorization{}, nil, err
 	}
-	claimPath := filepath.Join(filepath.Dir(path), pendingAuthorizationClaim)
+	_, claim := pendingAuthorizationNames()
+	claimPath := filepath.Join(filepath.Dir(path), claim)
 	if err := os.Link(path, claimPath); err != nil {
 		if errors.Is(err, os.ErrExist) || errors.Is(err, os.ErrNotExist) {
 			return PendingAuthorization{}, nil, pendingAuthorizationError("pending manual authorization was already consumed")
@@ -218,7 +227,8 @@ func writePendingAuthorization(path string, pending PendingAuthorization) error 
 }
 
 func removePendingClaim(pendingPath string) error {
-	claimPath := filepath.Join(filepath.Dir(pendingPath), pendingAuthorizationClaim)
+	_, claim := pendingAuthorizationNames()
+	claimPath := filepath.Join(filepath.Dir(pendingPath), claim)
 	info, err := safeAuthFileInfo(claimPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

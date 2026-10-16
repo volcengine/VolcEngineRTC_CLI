@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$requiredGoVersion = "go1.25.13"
+$requiredGoVersion = "go1.26.9"
 $actualGoVersion = (go env GOVERSION).Trim()
 if ($actualGoVersion -ne $requiredGoVersion) {
     throw "ci-windows requires $requiredGoVersion, found $actualGoVersion"

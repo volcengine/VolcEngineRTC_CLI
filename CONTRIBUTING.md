@@ -57,12 +57,18 @@ CI 通过同一个 Make target 检查 70.0% 的总覆盖率，不会给每个包
 ### 添加 `scene × platform` 模板
 
 1. 将源文件以 `*.tmpl` 形式放在 `internal/template/files/<scene>/<platform>/`。
-2. 在 `internal/template/registry.go` 中注册，设置 `Available: true`，并固定 SDK 版本。
+2. 在 `internal/template/registry_default.go` 的 `Templates()` 中添加条目，设置 `Available: true`；SDK 版本定义在 `internal/product/default.go`，远程归档固定完整 commit 和 SHA-256。
 3. 提供 `vertc.taskfile.yaml.tmpl`，包含 `post_create`、`install` 和 `dev`。
 4. 添加 render 测试，检查文件树和核心链路标记，参考 `render_test.go`。
 5. 填好配置和 Token 后，生成项目必须能通过 `vertc doctor`。
 
 添加模板不需要修改 `cmd/` 或 `internal/errs/`。
+
+### 修改产品参数与行为
+
+1. 在 `internal/product/default.go` 中维护产品标量参数，消费方通过 `product.Current()` 读取。
+2. 项目初始化、VoiceChat 请求编码和模板选择分别在 `cmd/dev_setup_default.go`、`internal/openapi/agent_contract_default.go` 和 `internal/template/registry_default.go` 中实现。
+3. 更新受影响包的测试；默认契约变化时，同步 `internal/product/testdata/default-contract.json`，核对命令、鉴权、请求和模板行为。
 
 ### 添加场景 Skill
 
@@ -158,12 +164,18 @@ when needed with `COVERAGE_PROFILE`, `COVERAGE_HTML`, and
 
 ### Add a `scene × platform` template (low-barrier)
 1. Add sources under `internal/template/files/<scene>/<platform>/` as `*.tmpl`.
-2. Register it in `internal/template/registry.go` (`Available: true`, pin the SDK).
+2. Add an entry to `Templates()` in `internal/template/registry_default.go` with `Available: true`. Define the SDK version in `internal/product/default.go`; pin remote archives to a full commit and SHA-256.
 3. Include a `vertc.taskfile.yaml.tmpl` with `post_create` / `install` / `dev`.
 4. Add a render test asserting the file tree and core workflow markers (see `render_test.go`).
 5. A generated project must pass `vertc doctor` once config + token are filled.
 
 You do not need to touch `cmd/` or `internal/errs/` to add a template.
+
+### Change product parameters and behavior
+
+1. Maintain scalar product defaults in `internal/product/default.go`; consumers read them through `product.Current()`.
+2. Implement project setup, VoiceChat request encoding, and template selection in `cmd/dev_setup_default.go`, `internal/openapi/agent_contract_default.go`, and `internal/template/registry_default.go`, respectively.
+3. Update the affected package tests. When default contracts change, update `internal/product/testdata/default-contract.json` and verify command, authentication, request, and template behavior.
 
 ### Add a scene skill (low-barrier)
 1. Copy `skill-template/skill-template.md` into `skills/byted-<product-code>-<skill-name>/SKILL.md`.

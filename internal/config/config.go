@@ -12,6 +12,7 @@ import (
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 // envRefPattern matches a `${ENV_VAR}` placeholder.
@@ -112,14 +113,15 @@ func Save(c *Config, path string) error {
 
 // Normalize applies schema defaults for newly added optional sections.
 func Normalize(c *Config) {
+	profile := product.Current()
 	if c.OpenAPI.Endpoint == "" {
-		c.OpenAPI.Endpoint = DefaultOpenAPIEndpoint
+		c.OpenAPI.Endpoint = profile.OpenAPIEndpoint
 	}
 	if c.OpenAPI.Service == "" {
-		c.OpenAPI.Service = DefaultOpenAPIService
+		c.OpenAPI.Service = profile.OpenAPIService
 	}
 	if c.OpenAPI.Region == "" {
-		c.OpenAPI.Region = DefaultOpenAPIRegion
+		c.OpenAPI.Region = profile.OpenAPIRegion
 	}
 }
 

@@ -6,6 +6,7 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -49,6 +50,23 @@ func TestSkillsListAndRead(t *testing.T) {
 	}
 	if strings.Contains(r.stdout, "tip:") {
 		t.Fatal("guidance leaked into stdout")
+	}
+
+	// --format json is the structured-output spelling of the legacy --json
+	// switch, and both must return the same envelope.
+	legacyJSON := run(t, dir, nil, "skills", "read", "byted-interactai-guide", "--json")
+	formatJSON := run(t, dir, nil, "skills", "read", "byted-interactai-guide", "--format", "json")
+	if legacyJSON.code != 0 || formatJSON.code != 0 {
+		t.Fatalf("structured skills read failed: --json=%d --format=json=%d", legacyJSON.code, formatJSON.code)
+	}
+	legacyEnvelope := legacyJSON.envelope(t)
+	formatEnvelope := formatJSON.envelope(t)
+	if !reflect.DeepEqual(legacyEnvelope, formatEnvelope) {
+		t.Fatalf("--format json differs from --json:\n--json: %v\n--format json: %v", legacyEnvelope, formatEnvelope)
+	}
+	structured, _ := formatEnvelope["data"].(map[string]any)
+	if structured["content"] != string(srcBytes) || structured["path"] != "SKILL.md" {
+		t.Fatalf("unexpected structured skills read data: %v", structured)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -206,5 +207,36 @@ func TestRunSkillsSyncReturnsTypedFailure(t *testing.T) {
 	typed, ok := errs.As(err)
 	if !ok || typed.Code != "vertc.skills.sync_failed" {
 		t.Fatalf("err=%v, want vertc.skills.sync_failed", err)
+	}
+}
+
+func TestSkillsReadFormatJSONMatchesLegacyJSON(t *testing.T) {
+	oldFS, oldFormat := officialSkillsFS, flagFormat
+	officialSkillsFS = fstest.MapFS{
+		"demo/SKILL.md": {Data: []byte("---\nname: demo\ndescription: demo\n---\nbody\n")},
+	}
+	flagFormat = ""
+	t.Cleanup(func() {
+		officialSkillsFS = oldFS
+		flagFormat = oldFormat
+	})
+
+	run := func(args ...string) string {
+		root := NewRootCmd()
+		root.SetArgs(args)
+		return captureCommandStdout(t, root.Execute)
+	}
+	withFormat := run("skills", "read", "demo", "--format", "json")
+	withLegacyFlag := run("skills", "read", "demo", "--json")
+
+	var formatEnvelope, legacyEnvelope map[string]any
+	if err := json.Unmarshal([]byte(withFormat), &formatEnvelope); err != nil {
+		t.Fatalf("decode --format json output %q: %v", withFormat, err)
+	}
+	if err := json.Unmarshal([]byte(withLegacyFlag), &legacyEnvelope); err != nil {
+		t.Fatalf("decode --json output %q: %v", withLegacyFlag, err)
+	}
+	if !reflect.DeepEqual(formatEnvelope, legacyEnvelope) {
+		t.Fatalf("--format json differs from --json: format=%v legacy=%v", formatEnvelope, legacyEnvelope)
 	}
 }

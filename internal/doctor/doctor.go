@@ -19,6 +19,7 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/auth"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/config"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/template"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/token"
 	updatecheck "github.com/volcengine/VolcEngineRTC_CLI/internal/update"
@@ -41,11 +42,6 @@ type Level string
 const (
 	LevelCLI     Level = "cli"
 	LevelProject Level = "project"
-)
-
-var (
-	authRefreshSkew   = 15 * time.Minute
-	authTokenEndpoint = auth.DefaultTokenEndpoint
 )
 
 // Check is a single structured diagnostic result.
@@ -307,8 +303,9 @@ func serverManagedAgentChecks(cfg *config.Config, dir string) []Check {
 }
 
 func serverAgentAuthCheck() Check {
-	accessKey := os.Getenv("VOLCENGINE_ACCESS_KEY_ID")
-	secretKey := os.Getenv("VOLCENGINE_SECRET_ACCESS_KEY")
+	profile := product.Current()
+	accessKey := os.Getenv(profile.AccessKeyEnv)
+	secretKey := os.Getenv(profile.SecretKeyEnv)
 	if accessKey != "" && secretKey != "" {
 		return Check{
 			ID: "project.agent.auth", Level: LevelProject, Title: "Server OpenAPI auth",
@@ -319,7 +316,7 @@ func serverAgentAuthCheck() Check {
 		return Check{
 			ID: "project.agent.auth", Level: LevelProject, Title: "Server OpenAPI auth",
 			Status: FAIL, Detail: "server AK/SK credential is incomplete",
-			Hint: "set VOLCENGINE_ACCESS_KEY_ID and VOLCENGINE_SECRET_ACCESS_KEY together",
+			Hint: "set " + profile.AccessKeyEnv + " and " + profile.SecretKeyEnv + " together",
 		}
 	}
 	check := agentAuthCheck()
@@ -380,9 +377,10 @@ func agentChecks(cfg *config.Config, dir string) []Check {
 }
 
 func agentAuthCheck() Check {
+	profile := product.Current()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	token, _, err := auth.EnsureFreshToken(ctx, nil, authRefreshSkew, authTokenEndpoint)
+	token, _, err := auth.EnsureFreshTokenWithScope(ctx, nil, profile.OAuthRefreshSkew, profile.OAuthTokenEndpoint, profile.OAuthScope)
 	if err != nil {
 		return Check{
 			ID: "project.agent.auth", Level: LevelProject, Title: "Agent auth",

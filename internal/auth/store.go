@@ -22,20 +22,32 @@ import (
 
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 )
 
 const (
-	tokenStoreAccount   = "default"
-	authEnvelopeVersion = 1
-	StoreFile           = "file"
-	StoreKeyring        = "keyring"
+	defaultTokenStoreAccount = product.DefaultAuthNamespace
+	authEnvelopeVersion      = 1
+	StoreFile                = "file"
+	StoreKeyring             = "keyring"
 )
+
+func tokenStoreAccount() string {
+	if namespace := strings.TrimSpace(product.Current().AuthStorageNamespace); namespace != "" {
+		return namespace
+	}
+	return defaultTokenStoreAccount
+}
 
 type TokenStore interface {
 	Load() (TokenSet, error)
 	Save(TokenSet) error
 	Delete() error
 	Location() string
+}
+
+type tokenStorePreflighter interface {
+	Preflight() error
 }
 
 var (
@@ -63,6 +75,24 @@ func TokenLocation() string {
 	return currentTokenStore().Location()
 }
 
+// PreflightTokenStore verifies that the selected credential store can accept a
+// later Save before an authorization URL is shown or opened.
+// Keyring preflight checks the metadata path without accessing the OS keyring.
+func PreflightTokenStore() error {
+	store := currentTokenStore()
+	if resolving, ok := store.(resolvingTokenStore); ok {
+		resolved, err := resolving.resolveForWrite()
+		if err != nil {
+			return err
+		}
+		store = resolved
+	}
+	if preflighter, ok := store.(tokenStorePreflighter); ok {
+		return preflighter.Preflight()
+	}
+	return nil
+}
+
 func IsAuthenticated() bool {
 	token, err := LoadToken()
 	return err == nil && token.AccessToken != ""
@@ -71,6 +101,12 @@ func IsAuthenticated() bool {
 // EnsureFreshToken loads the stored token and refreshes it when it is already
 // expired or within skew of expiry.
 func EnsureFreshToken(ctx context.Context, httpClient *http.Client, skew time.Duration, tokenEndpoint string) (TokenSet, bool, error) {
+	return EnsureFreshTokenWithScope(ctx, httpClient, skew, tokenEndpoint, DefaultScope)
+}
+
+// EnsureFreshTokenWithScope is the explicit-profile variant used by command
+// orchestration. EnsureFreshToken remains the default compatibility entrypoint.
+func EnsureFreshTokenWithScope(ctx context.Context, httpClient *http.Client, skew time.Duration, tokenEndpoint, scope string) (TokenSet, bool, error) {
 	token, err := LoadToken()
 	if errors.Is(err, os.ErrNotExist) {
 		return TokenSet{}, false, errs.New("vertc.auth.not_authenticated", errs.TypeAuth,
@@ -88,7 +124,7 @@ func EnsureFreshToken(ctx context.Context, httpClient *http.Client, skew time.Du
 	if !token.Expired(time.Now(), skew) {
 		return token, false, nil
 	}
-	refreshed, err := RefreshToken(ctx, httpClient, tokenEndpoint, token)
+	refreshed, err := RefreshTokenWithScope(ctx, httpClient, tokenEndpoint, token, scope)
 	if err != nil {
 		return TokenSet{}, false, err
 	}
@@ -289,15 +325,26 @@ func authFilePath() (string, error) {
 		}
 		home = filepath.Join(userHome, ".vertc")
 	}
-	return filepath.Join(home, "auth.json"), nil
+	name := "auth.json"
+	if namespace := tokenStoreAccount(); namespace != defaultTokenStoreAccount {
+		name = "auth-" + namespace + ".json"
+	}
+	return filepath.Join(home, name), nil
 }
 
 type KeyringTokenStore struct {
 	MetadataPath string
 }
 
+func (s KeyringTokenStore) Preflight() error {
+	if s.MetadataPath == "" {
+		return nil
+	}
+	return (FileTokenStore{Path: s.MetadataPath}).Preflight()
+}
+
 func (KeyringTokenStore) Load() (TokenSet, error) {
-	serialized, err := keyringGet(meta.BinName, tokenStoreAccount)
+	serialized, err := keyringGet(meta.BinName, tokenStoreAccount())
 	if err != nil {
 		if errors.Is(err, keyring.ErrNotFound) {
 			return TokenSet{}, os.ErrNotExist
@@ -316,12 +363,12 @@ func (s KeyringTokenStore) Save(token TokenSet) error {
 	if err != nil {
 		return storageErr("serialize token for OS keyring", err)
 	}
-	if err := keyringSet(meta.BinName, tokenStoreAccount, string(data)); err != nil {
+	if err := keyringSet(meta.BinName, tokenStoreAccount(), string(data)); err != nil {
 		return storageErr("write token to OS keyring", err)
 	}
 	if s.MetadataPath != "" {
 		if metadataErr := writeAuthEnvelope(s.MetadataPath, authEnvelope{Version: authEnvelopeVersion, Store: StoreKeyring}); metadataErr != nil {
-			if rollbackErr := keyringDelete(meta.BinName, tokenStoreAccount); rollbackErr != nil && !errors.Is(rollbackErr, keyring.ErrNotFound) {
+			if rollbackErr := keyringDelete(meta.BinName, tokenStoreAccount()); rollbackErr != nil && !errors.Is(rollbackErr, keyring.ErrNotFound) {
 				return storageErr("rollback token after keyring metadata failure",
 					fmt.Errorf("metadata: %v; rollback: %w", metadataErr, rollbackErr))
 			}
@@ -332,7 +379,7 @@ func (s KeyringTokenStore) Save(token TokenSet) error {
 }
 
 func (s KeyringTokenStore) Delete() error {
-	err := keyringDelete(meta.BinName, tokenStoreAccount)
+	err := keyringDelete(meta.BinName, tokenStoreAccount())
 	if err == nil || errors.Is(err, keyring.ErrNotFound) {
 		if s.MetadataPath != "" {
 			return writeAuthEnvelope(s.MetadataPath, authEnvelope{Version: authEnvelopeVersion, Store: StoreKeyring})
@@ -343,7 +390,7 @@ func (s KeyringTokenStore) Delete() error {
 }
 
 func (KeyringTokenStore) Location() string {
-	return fmt.Sprintf("os-keychain:%s/%s", meta.BinName, tokenStoreAccount)
+	return fmt.Sprintf("os-keychain:%s/%s", meta.BinName, tokenStoreAccount())
 }
 
 type MemoryTokenStore struct {
@@ -388,4 +435,11 @@ func storageErr(action string, err error) *errs.Error {
 	return errs.New("vertc.auth.storage_unavailable", errs.TypeAuth,
 		"%s: %s", action, err).
 		WithHint("check the selected credential store and its permissions, then retry")
+}
+
+func credentialPreflightError(location string, err error) *errs.Error {
+	return errs.New("vertc.auth.storage_unavailable", errs.TypeAuth,
+		"credential location %s is not writable: %v", location, err).
+		WithCause(err).
+		WithHint("check sandbox directory permissions, or set VERTC_HOME to a writable private directory and keep using that VERTC_HOME for subsequent commands")
 }

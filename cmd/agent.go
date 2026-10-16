@@ -20,6 +20,7 @@ import (
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/errs"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/meta"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/openapi"
+	"github.com/volcengine/VolcEngineRTC_CLI/internal/product"
 	"github.com/volcengine/VolcEngineRTC_CLI/internal/template"
 )
 
@@ -130,7 +131,7 @@ func buildStartRequest(cfg *config.Config, dir string) (openapi.StartVoiceChatRe
 		taskID = "agent-" + roomID
 	}
 	return openapi.StartVoiceChatRequest{
-		AppID: appID, BusinessID: meta.BusinessID, RoomID: roomID, TaskID: taskID,
+		AppID: appID, BusinessID: product.Current().BusinessID, RoomID: roomID, TaskID: taskID,
 		Config: tpl.VoiceChat.Config, AgentConfig: agentCfg,
 	}, nil
 }
@@ -183,7 +184,7 @@ func newAgentStartCmd() *cobra.Command {
 				}
 				// The companion server is local project code and may be modified;
 				// enforce CLI attribution at the final trusted OpenAPI boundary.
-				req.BusinessID = meta.BusinessID
+				req.BusinessID = product.Current().BusinessID
 				if err := validateRuntimeStartRequest(req); err != nil {
 					return err
 				}

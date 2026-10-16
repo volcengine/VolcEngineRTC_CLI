@@ -17,6 +17,7 @@ type STSProvider struct {
 	HTTPClient    *http.Client
 	RefreshSkew   time.Duration
 	TokenEndpoint string
+	Scope         string
 }
 
 func (p STSProvider) Credentials(ctx context.Context) (openapi.Credential, error) {
@@ -24,7 +25,7 @@ func (p STSProvider) Credentials(ctx context.Context) (openapi.Credential, error
 	if tokenEndpoint == "" {
 		tokenEndpoint = DefaultTokenEndpoint
 	}
-	token, _, err := EnsureFreshToken(ctx, p.HTTPClient, p.RefreshSkew, tokenEndpoint)
+	token, _, err := EnsureFreshTokenWithScope(ctx, p.HTTPClient, p.RefreshSkew, tokenEndpoint, p.Scope)
 	if err != nil {
 		return openapi.Credential{}, err
 	}

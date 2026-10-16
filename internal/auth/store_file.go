@@ -36,6 +36,36 @@ func (s FileTokenStore) Save(token TokenSet) error {
 	})
 }
 
+// Preflight verifies the same directory and target-path prerequisites used by
+// Save, then removes its probe. It deliberately does not create or modify the
+// credential file itself.
+func (s FileTokenStore) Preflight() error {
+	if err := ensureSecureAuthDir(filepath.Dir(s.Path)); err != nil {
+		return credentialPreflightError(s.Location(), err)
+	}
+	if info, err := safeAuthFileInfo(s.Path); err == nil {
+		if !info.Mode().IsRegular() {
+			return credentialPreflightError(s.Location(), fmt.Errorf("credential path is not a regular file"))
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return credentialPreflightError(s.Location(), err)
+	}
+
+	probe, err := os.CreateTemp(filepath.Dir(s.Path), ".auth-preflight-*.tmp")
+	if err != nil {
+		return credentialPreflightError(s.Location(), err)
+	}
+	probePath := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(probePath)
+		return credentialPreflightError(s.Location(), err)
+	}
+	if err := os.Remove(probePath); err != nil {
+		return credentialPreflightError(s.Location(), err)
+	}
+	return nil
+}
+
 func (s FileTokenStore) Delete() error {
 	info, err := safeAuthFileInfo(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
